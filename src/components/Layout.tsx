@@ -32,7 +32,7 @@ export default function Layout({ children }: LayoutProps) {
     // ========================================
     const ga4Script = document.createElement("script");
     ga4Script.async = true;
-    ga4Script.src = "https://www.googletagmanager.com/gtag/js?id=G-G6B4TMDNTK";
+    ga4Script.src = "https://www.googletagmanager.com/gtag/js?id=G-CYYMFFQKQW";
     document.head.appendChild(ga4Script);
 
     const ga4ConfigScript = document.createElement("script");
@@ -40,7 +40,7 @@ export default function Layout({ children }: LayoutProps) {
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-      gtag('config', 'G-G6B4TMDNTK');
+      gtag('config', 'G-CYYMFFQKQW');
     `;
     document.head.appendChild(ga4ConfigScript);
 
