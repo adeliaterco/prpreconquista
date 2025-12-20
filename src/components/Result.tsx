@@ -499,7 +499,7 @@ export default function Result({ onNavigate }: ResultProps) {
             <div className="trust-icons">
               <span>🔒 Compra segura</span>
               <span>✅ Acceso instantáneo</span>
-              <span>↩️ 7 días de garantía</span>
+              <span>↩️ 30 días de garantía</span>
             </div>
 
             {/* JUSTIFICATIVA DE SPOTS */}
