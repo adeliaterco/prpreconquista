@@ -225,17 +225,17 @@ export default function Result({ onNavigate }: ResultProps) {
         videoSectionRef.current.innerHTML = `
           <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
             <vturb-smartplayer 
-              id="vid-694589638fd5231b631c6be7" 
+              id="vid-6946ae0a8fd5231b631d81f0" 
               style="display: block; margin: 0 auto; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"
             ></vturb-smartplayer>
           </div>
         `;
 
-        const existingScript = document.querySelector('script[src="https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/694589638fd5231b631c6be7/v4/player.js"]');
+        const existingScript = document.querySelector('script[src="https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/6946ae0a8fd5231b631d81f0/v4/player.js"]');
         
         if (!existingScript) {
           const s = document.createElement("script");
-          s.src = "https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/694589638fd5231b631c6be7/v4/player.js";
+          s.src = "https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/6946ae0a8fd5231b631d81f0/v4/player.js";
           s.async = true;
           
           s.onload = () => {
