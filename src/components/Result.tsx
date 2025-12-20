@@ -22,13 +22,11 @@ interface ResultProps {
 }
 
 export default function Result({ onNavigate }: ResultProps) {
-  // --- ESTADO UNIFICADO E CONTROLE DE FLUXO (Alteração #4) ---
+  // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
   const [currentPhase, setCurrentPhase] = useState(0); // 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
-  const [offerRevealed, setOfferRevealed] = useState(false);
-  const [ventanaRevealed, setVentanaRevealed] = useState(false);
-  const [timeOnPage, setTimeOnPage] = useState(0);
+  // REMOVIDO: offerRevealed, ventanaRevealed, timeOnPage
 
-  // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE (Alteração #9) ---
+  // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
   const getInitialTime = () => {
     const savedTimestamp = localStorage.getItem('quiz_timer_start');
     if (savedTimestamp) {
@@ -46,6 +44,7 @@ export default function Result({ onNavigate }: ResultProps) {
   const [spotsLeft, setSpotsLeft] = useState(storage.getSpotsLeft());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [peopleBuying, setPeopleBuying] = useState(Math.floor(Math.random() * 5) + 1); // Adicionado para gamificação
 
   const quizData = storage.getQuizData();
   const diagnosticoSectionRef = useRef<HTMLDivElement>(null);
@@ -55,7 +54,7 @@ export default function Result({ onNavigate }: ResultProps) {
 
   const gender = quizData.gender || 'HOMBRE';
 
-  // ALTERAÇÃO #1: Redução de steps para 2.5s totais de loading
+  // Redução de steps para 2.5s totais de loading
   const loadingSteps = [
     { icon: '📊', text: 'Respuestas procesadas', duration: 0 },
     { icon: '🧠', text: 'Generando tu diagnóstico personalizado...', duration: 1000 }
@@ -90,29 +89,7 @@ export default function Result({ onNavigate }: ResultProps) {
     return url.toString();
   };
 
-  // --- LÓGICAS DE REVELAÇÃO CONDICIONAL (Alteração #2 e #5) ---
-  const revealOffer = () => {
-    if (offerRevealed) return;
-    setOfferRevealed(true);
-    setCurrentPhase(4);
-    playKeySound();
-    tracking.revelationViewed('offer');
-    ga4Tracking.revelationViewed('Oferta Revelada', 3);
-    ga4Tracking.offerRevealed();
-    
-    setTimeout(() => {
-      offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 500);
-  };
-
-  const revealVentana = () => {
-    if (ventanaRevealed) return;
-    setVentanaRevealed(true);
-    setCurrentPhase(3);
-    playKeySound();
-    tracking.revelationViewed('72h_window');
-    ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
-  };
+  // REMOVIDO: revealOffer e revealVentana
 
   // --- EFEITO PRINCIPAL DE PROGRESSÃO ---
   useEffect(() => {
@@ -120,9 +97,9 @@ export default function Result({ onNavigate }: ResultProps) {
     tracking.pageView('resultado');
     ga4Tracking.resultPageView();
 
-    const timeInterval = setInterval(() => setTimeOnPage(prev => prev + 1), 1000);
+    // REMOVIDO: const timeInterval = setInterval(() => setTimeOnPage(prev => prev + 1), 1000);
 
-    // Loading acelerado (Alteração #1)
+    // Loading acelerado
     const progressInterval = setInterval(() => {
       setLoadingProgress(prev => {
         if (prev >= 100) {
@@ -137,24 +114,50 @@ export default function Result({ onNavigate }: ResultProps) {
       setTimeout(() => setLoadingStep(index), step.duration);
     });
 
-    // Fase 1: Diagnóstico em 2.5s (Alteração #1 e #10)
+    // Fase 1: Diagnóstico em 2.5s
     const timerPhase1 = setTimeout(() => {
       setCurrentPhase(1);
       playKeySound();
+      tracking.revelationViewed('why_left'); // Adicionado tracking
+      ga4Tracking.revelationViewed('Por qué te dejó', 1); // Adicionado tracking
       setTimeout(() => {
         diagnosticoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }, 2500);
 
-    // Fase 2: Vídeo (Alteração #10)
+    // Fase 2: Vídeo em 8s
     const timerPhase2 = setTimeout(() => {
       setCurrentPhase(2);
       playKeySound();
       tracking.vslEvent('started');
+      ga4Tracking.videoStarted(); // Adicionado tracking
       setTimeout(() => {
         videoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }, 8000);
+
+    // NOVO TIMING: Fase 3: Ventana 72h em 58s (8s + 50s de vídeo)
+    const timerPhase3 = setTimeout(() => {
+      setCurrentPhase(3);
+      playKeySound();
+      tracking.revelationViewed('72h_window'); // Adicionado tracking
+      ga4Tracking.revelationViewed('Ventana 72 Horas', 2); // Adicionado tracking
+      setTimeout(() => {
+        ventana72SectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }, 58000); // 8000ms (fase 2) + 50000ms (50s de vídeo)
+
+    // NOVO TIMING: Fase 4: Oferta em 68s (58s + 10s após Ventana)
+    const timerPhase4 = setTimeout(() => {
+      setCurrentPhase(4);
+      playKeySound();
+      tracking.revelationViewed('offer'); // Adicionado tracking
+      ga4Tracking.revelationViewed('Oferta Revelada', 3); // Adicionado tracking
+      ga4Tracking.offerRevealed(); // Adicionado tracking
+      setTimeout(() => {
+        offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 500);
+    }, 68000); // 58000ms (fase 3) + 10000ms (10s após Ventana)
 
     const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
 
@@ -163,55 +166,40 @@ export default function Result({ onNavigate }: ResultProps) {
         if (prev > 15) {
           const newSpots = prev - 1;
           storage.setSpotsLeft(newSpots);
+          ga4Tracking.spotsUpdated(newSpots); // Adicionado tracking
           return newSpots;
         }
         return prev;
       });
     }, 45000);
 
+    // Gamificação: Contador de pessoas comprando (adicionado)
+    const buyingInterval = setInterval(() => {
+      setPeopleBuying(prev => {
+        const change = Math.random() > 0.5 ? 1 : -1;
+        let newCount = prev + change;
+        if (newCount < 1) newCount = 1; // Não vai abaixo de 1
+        if (newCount > 7) newCount = 7; // Máximo 7 para realismo
+        return newCount;
+      });
+    }, Math.floor(Math.random() * 10000) + 5000); // Atualiza a cada 5-15 segundos
+
     return () => {
-      clearInterval(timeInterval);
+      // REMOVIDO: clearInterval(timeInterval);
       clearInterval(progressInterval);
       clearTimeout(timerPhase1);
       clearTimeout(timerPhase2);
+      clearTimeout(timerPhase3); // Limpar novo timer
+      clearTimeout(timerPhase4); // Limpar novo timer
       clearInterval(countdownInterval);
       clearInterval(spotsInterval);
+      clearInterval(buyingInterval); // Limpar novo timer
     };
   }, []);
 
-  // Monitor de Interação para Revelação (Alteração #2 e #5)
-  useEffect(() => {
-    const checkReveals = () => {
-      // Ventana 72h: Scroll 100px abaixo do vídeo ou 2 min após vídeo iniciar
-      if (currentPhase >= 2 && !ventanaRevealed) {
-        const videoBottom = videoSectionRef.current?.getBoundingClientRect().bottom || 0;
-        if (videoBottom < -100 || timeOnPage >= 128) {
-          revealVentana();
-        }
-      }
+  // REMOVIDO: Monitor de Interação para Revelação (useEffect com checkReveals)
 
-      // Oferta: Scroll abaixo do vídeo ou 5 min total na página
-      if (!offerRevealed) {
-        if (timeOnPage >= 300) {
-          revealOffer();
-        } else if (videoSectionRef.current) {
-          const videoBottom = videoSectionRef.current.getBoundingClientRect().bottom;
-          if (videoBottom < 0 && currentPhase >= 2) {
-            revealOffer();
-          }
-        }
-      }
-    };
-
-    window.addEventListener('scroll', checkReveals);
-    const interval = setInterval(checkReveals, 1000);
-    return () => {
-      window.removeEventListener('scroll', checkReveals);
-      clearInterval(interval);
-    };
-  }, [timeOnPage, currentPhase, offerRevealed, ventanaRevealed]);
-
-  // Redirecionamento por expiração (Alteração #9)
+  // Redirecionamento por expiração
   useEffect(() => {
     if (timeLeft <= 0 && currentPhase > 0) {
       alert('Tu análisis ha expirado. Por favor, completa el quiz nuevamente.');
@@ -225,11 +213,21 @@ export default function Result({ onNavigate }: ResultProps) {
     if (currentPhase !== 2 || !videoSectionRef.current) return;
     const timer = setTimeout(() => {
       if (videoSectionRef.current) {
-        videoSectionRef.current.innerHTML = `
-          <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
-            <vturb-smartplayer id="vid-6946ae0a8fd5231b631d81f0" style="display: block; margin: 0 auto; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></vturb-smartplayer>
-          </div>
+        // Criar um container específico para o VTurb para evitar conflito de ref
+        const vturbContainer = document.createElement('div');
+        vturbContainer.style.position = 'relative';
+        vturbContainer.style.width = '100%';
+        vturbContainer.style.paddingBottom = '56.25%';
+        vturbContainer.style.background = '#000';
+        vturbContainer.style.borderRadius = '8px';
+        vturbContainer.style.overflow = 'hidden';
+        vturbContainer.innerHTML = `
+          <vturb-smartplayer id="vid-6946ae0a8fd5231b631d81f0" style="display: block; margin: 0 auto; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></vturb-smartplayer>
         `;
+        // Limpa o conteúdo anterior e anexa o novo container
+        videoSectionRef.current.innerHTML = '';
+        videoSectionRef.current.appendChild(vturbContainer);
+
         if (!document.querySelector('script[src*="player.js"]')) {
           const s = document.createElement("script");
           s.src = "https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/6946ae0a8fd5231b631d81f0/v4/player.js";
@@ -268,7 +266,7 @@ export default function Result({ onNavigate }: ResultProps) {
         </p>
       </div>
 
-      {/* BARRA DE PROGRESSO UNIFICADA (Alteração #4) */}
+      {/* BARRA DE PROGRESSO UNIFICADA */}
       {currentPhase > 0 && (
         <div className="progress-bar-container fade-in">
           {phases.map((label, index) => (
@@ -282,7 +280,7 @@ export default function Result({ onNavigate }: ResultProps) {
 
       <div className="revelations-container">
         
-        {/* LOADING ACELERADO (Alteração #1) */}
+        {/* LOADING ACELERADO */}
         {currentPhase === 0 && (
           <div className="revelation fade-in loading-box-custom">
             <div className="loading-inner">
@@ -302,7 +300,7 @@ export default function Result({ onNavigate }: ResultProps) {
           </div>
         )}
 
-        {/* FASE 1: DIAGNÓSTICO (Alteração #6 e #11) */}
+        {/* FASE 1: DIAGNÓSTICO */}
         {currentPhase >= 1 && (
           <div ref={diagnosticoSectionRef} className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''}`}>
             <div className="revelation-header">
@@ -310,7 +308,7 @@ export default function Result({ onNavigate }: ResultProps) {
               <h2>{getTitle(gender)}</h2>
             </div>
             
-            {/* BOX DE DADOS REAIS (Alteração #6) */}
+            {/* BOX DE DADOS REAIS */}
             <div className="quiz-summary-box">
               <p className="summary-title">📋 TU SITUACIÓN ESPECÍFICA</p>
               <div className="summary-grid">
@@ -337,8 +335,35 @@ export default function Result({ onNavigate }: ResultProps) {
               <h2>Cómo Reactivar Los Interruptores Emocionales En 72 Horas</h2>
             </div>
             <div className="vsl-container">
-              <div ref={videoSectionRef} className="vsl-placeholder"></div>
+              {/* O VTurb será injetado aqui pelo useEffect */}
+              <div id="vturb-placeholder"></div> 
             </div>
+
+            {/* NOVO: LOADING ABAIXO DO VÍDEO */}
+            {currentPhase === 2 && (
+              <div style={{
+                backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                border: '2px solid #eab308',
+                padding: '30px',
+                borderRadius: '12px',
+                marginTop: '20px',
+                textAlign: 'center',
+                color: 'white'
+              }}>
+                <div style={{
+                  display: 'inline-block',
+                  width: '30px',
+                  height: '30px',
+                  border: '3px solid #eab308',
+                  borderTop: '3px solid transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                  marginBottom: '10px'
+                }}></div>
+                <p style={{ margin: '0 0 5px 0', fontSize: '1.1rem' }}>⏳ Preparando tu análisis de la Ventana de 72 Horas...</p>
+                <span style={{ animation: 'dots 1.5s infinite', display: 'inline-block', width: '30px', overflow: 'hidden', verticalAlign: 'bottom', fontSize: '1.5rem' }}></span>
+              </div>
+            )}
           </div>
         )}
 
@@ -363,35 +388,100 @@ export default function Result({ onNavigate }: ResultProps) {
               alt="Ventana 72h" 
               className="ventana-img"
             />
+
+            {/* NOVO: LOADING ENTRE VENTANA E OFERTA */}
+            {currentPhase === 3 && (
+              <div style={{
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                padding: '20px',
+                borderRadius: '8px',
+                textAlign: 'center',
+                marginTop: '20px',
+                color: 'white',
+                fontSize: '1.1rem'
+              }}>
+                🎯 Preparando tu oferta exclusiva...
+              </div>
+            )}
           </div>
         )}
 
-        {/* BOTÃO REVELAR OFERTA (Alteração #2) */}
-        {currentPhase >= 3 && !offerRevealed && (
-          <div className="manual-reveal-container">
-            <button onClick={revealOffer} className="btn-reveal-offer">🎯 QUIERO VER LA SOLUCIÓN AHORA</button>
-            <p>👆 Haz clic para acceder a la oferta exclusiva</p>
-          </div>
-        )}
+        {/* REMOVIDO: BOTÃO REVELAR OFERTA MANUAL */}
 
-        {/* FASE 4: OFERTA (Alteração #3, #7, #8) */}
+        {/* FASE 4: OFERTA */}
         {currentPhase >= 4 && (
           <div ref={offerSectionRef} className="revelation fade-in offer-section-custom">
             <div className="offer-badge">OFERTA EXCLUSIVA</div>
             <h2 className="offer-title-main">{getOfferTitle(gender)}</h2>
 
-            {/* PREÇO E DESCONTO (Alteração #7) */}
+            {/* BOX DE DADOS DO QUIZ (Adicionado do código antigo) */}
+            <div className="quiz-summary-box" style={{
+              background: 'rgba(234, 179, 8, 0.1)',
+              border: '2px solid rgba(234, 179, 8, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '30px'
+            }}>
+              <p className="summary-title" style={{
+                fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
+                color: 'rgb(253, 224, 71)',
+                marginBottom: 'clamp(12px, 3vw, 16px)',
+                fontWeight: 'bold'
+              }}>
+                Basado en tu situación específica:
+              </p>
+              <div className="summary-grid">
+                <div><span>✓</span> <strong>Tiempo:</strong> {quizData.timeSeparation || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Quién terminó:</strong> {quizData.whoEnded || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Contacto:</strong> {quizData.currentSituation || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Compromiso:</strong> {quizData.commitmentLevel || 'No especificado'}</div>
+              </div>
+            </div>
+
+            {/* FEATURES COM CHECKMARKS (Adicionado do código antigo) */}
+            <div className="offer-features" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'clamp(12px, 3vw, 16px)',
+              marginBottom: 'clamp(24px, 5vw, 32px)'
+            }}>
+              {getFeatures(gender).map((feature, index) => (
+                <div key={index} className="feature" style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 'clamp(10px, 3vw, 12px)',
+                  padding: 'clamp(8px, 2vw, 12px) 0'
+                }}>
+                  <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{
+                    minWidth: 'clamp(20px, 5vw, 24px)',
+                    width: 'clamp(20px, 5vw, 24px)',
+                    height: 'clamp(20px, 5vw, 24px)',
+                    marginTop: '2px',
+                    color: '#4ade80'
+                  }}>
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span style={{
+                    fontSize: 'clamp(0.9rem, 3.5vw, 1.125rem)',
+                    lineHeight: '1.5',
+                    flex: 1
+                  }}>{feature}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* PREÇO E DESCONTO (CORRIGIDO) */}
             <div className="price-box">
-              <p className="price-old">Precio regular: R$ 297</p>
-              <p className="price-new">R$ 97</p>
-              <p className="price-discount">💰 67% de descuento HOY</p>
+              <p className="price-old">Precio regular: $67</p>
+              <p className="price-new">$9.90</p>
+              <p className="price-discount">💰 85% de descuento HOY</p>
             </div>
 
             <button className="cta-buy-final" onClick={handleCTAClick}>
-              🎯 ACCEDER AL MÉTODO COMPLETO AHORA
+              🎯 {getCTA(gender)}
             </button>
 
-            {/* PROVA SOCIAL REAL (Alteração #3) */}
+            {/* PROVA SOCIAL REAL */}
             <div className="real-proof-box">
               <p>⭐ <strong>4.8/5 estrellas</strong> (2.341 avaliações verificadas)</p>
               <p>📱 Última compra hace 4 minutos</p>
@@ -403,7 +493,7 @@ export default function Result({ onNavigate }: ResultProps) {
               <span>↩️ 7 días de garantía</span>
             </div>
 
-            {/* JUSTIFICATIVA DE SPOTS (Alteração #8) */}
+            {/* JUSTIFICATIVA DE SPOTS */}
             <div className="final-urgency-grid">
               <div className="urgency-item">
                 <span>Tiempo restante:</span>
@@ -415,12 +505,48 @@ export default function Result({ onNavigate }: ResultProps) {
                 <small>(Limitado para soporte personalizado)</small>
               </div>
             </div>
+
+            {/* GAMIFICAÇÃO: PESSOAS COMPRANDO (Adicionado do código antigo) */}
+            <p className="people-buying-counter" style={{
+              textAlign: 'center',
+              color: 'rgb(74, 222, 128)',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
+              marginTop: 'clamp(16px, 4vw, 20px)',
+              marginBottom: 'clamp(12px, 3vw, 16px)',
+              lineHeight: '1.5',
+              fontWeight: '600'
+            }}>
+              ✨ {peopleBuying} personas están comprando ahora mismo
+            </p>
+
+            {/* PROVA SOCIAL +12.847 (Adicionado do código antigo) */}
+            <p className="social-proof-count" style={{
+              textAlign: 'center',
+              color: 'rgb(74, 222, 128)',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
+              marginBottom: 'clamp(12px, 3vw, 16px)',
+              lineHeight: '1.5',
+              fontWeight: '600'
+            }}>
+              ✓ +12.847 reconquistas exitosas
+            </p>
+
+            {/* EXCLUSIVIDADE (Adicionado do código antigo) */}
+            <p className="guarantee-text" style={{
+              textAlign: 'center',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
+              lineHeight: '1.6',
+              color: 'rgba(255, 255, 255, 0.9)',
+              padding: '0 8px'
+            }}>
+              Exclusivo para quien completó el análisis personalizado
+            </p>
           </div>
         )}
       </div>
 
-      {/* STICKY FOOTER (Alteração #9) */}
-      {offerRevealed && (
+      {/* STICKY FOOTER */}
+      {currentPhase >= 4 && ( // Condição alterada de offerRevealed para currentPhase >= 4
         <div className="sticky-footer-urgency fade-in-up">
           ⏰ {formatTime(timeLeft)} • {spotsLeft} spots restantes
         </div>
@@ -444,7 +570,7 @@ export default function Result({ onNavigate }: ResultProps) {
         .cta-buy-final { width: 100%; background: #eab308; color: black; font-weight: 900; padding: 20px; border-radius: 12px; font-size: 1.5rem; border: 3px solid white; cursor: pointer; }
         .real-proof-box { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 15px; text-align: center; color: #4ade80; margin: 20px 0; }
         .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; }
-        .btn-reveal-offer { background: linear-gradient(135deg, #eab308, #facc15); color: black; font-weight: 900; font-size: 1.3rem; padding: 18px 30px; border-radius: 12px; border: 3px solid white; cursor: pointer; }
+        /* REMOVIDO: .btn-reveal-offer */
         .final-urgency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .urgency-item { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; text-align: center; }
         .urgency-item strong { display: block; font-size: 1.5rem; }
@@ -456,6 +582,30 @@ export default function Result({ onNavigate }: ResultProps) {
         .progress-step.completed .step-circle { background: #4ade80; color: white; }
         .ventana-img { width: 100%; max-width: 600px; border-radius: 12px; margin: 20px auto; display: block; }
         .emotional-validation { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 20px; margin-top: 20px; color: #4ade80; }
+        
+        /* NOVAS ANIMAÇÕES */
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes dots {
+          0%, 20% { content: '.'; }
+          40% { content: '..'; }
+          60% { content: '...'; }
+          80%, 100% { content: ''; }
+        }
+
+        /* Animações fade-in e fade-in-up (mantidas) */
+        .fade-in { animation: fadeIn 0.6s ease-in-out; }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(100%); }
+          to { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
     </div>
   );
