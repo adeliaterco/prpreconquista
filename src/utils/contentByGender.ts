@@ -1,8 +1,8 @@
 import { QuizData } from '../types/quiz';
 
-// 
+// ========================================
 // FUNÇÕES DE PERSONALIZAÇÃO POR GÊNERO
-// 
+// ========================================
 
 export function getTitle(gender: string): string {
   return gender === 'HOMBRE' 
@@ -16,71 +16,60 @@ export function getLoadingMessage(gender: string): string {
     : 'Generando tu protocolo específico para reconquistar a él...';
 }
 
+/**
+ * ALTERAÇÃO #6: Diagnóstico Ultra-Personalizado
+ * Transforma os dados do quiz em uma narrativa de autoridade e empatia.
+ */
 export function getCopy(quizData: QuizData): string {
   const pronoun = quizData.gender === 'HOMBRE' ? 'ella' : 'él';
   const exPronoun = quizData.gender === 'HOMBRE' ? 'Ella' : 'Él';
   
-  const whoEnded = quizData.whoEnded || 'No especificado';
-  const timeSeparation = quizData.timeSeparation || 'No especificado';
-  const currentSituation = quizData.currentSituation || 'No especificado';
-  const reason = quizData.reason || 'No especificado';
+  const whoEnded = quizData.whoEnded || '';
+  const timeSeparation = quizData.timeSeparation || '';
+  const currentSituation = quizData.currentSituation || '';
+  const reason = quizData.reason || '';
 
-  // 1. Lógica de Introducción (Quem terminó) - Curta (máx 3 linhas)
+  // 1. Lógica de Introdução (Quem terminou)
   let intro = '';
   if (whoEnded.includes('Ella') || whoEnded.includes('Él')) {
-    intro = `${exPronoun} decidió terminar la relación, lo que indica un desgaste en su percepción de tu valor.`;
+    intro = `Basado en que ${exPronoun} decidió terminar la relación, entendemos que hubo un desgaste en los "interruptores de valor" que ${pronoun} percibía en ti. `;
   } else {
-    intro = `Fuiste tú quien terminó, ahora el desafío es revertir el sentimiento de rechazo y crear una nueva oportunidad.`;
+    intro = `Considerando que fuiste tú quien terminó, el desafío ahora es revertir el sentimiento de rechazo que ${pronoun} procesó, transformándolo en una nueva oportunidad. `;
   }
 
-  // 2. Lógica de Urgencia (Tempo de separação) - Curta (máx 3 linhas)
+  // 2. Lógica de Urgência (Tempo de separação)
   let urgency = '';
   if (timeSeparation.includes('Menos de 1 mes') || timeSeparation.includes('1-3 meses')) {
-    urgency = `Estás en la **ventana de tiempo IDEAL**. Su cerebro aún tiene rastros químicos de tu presencia.`;
+    urgency = `Estás en la **ventana de tiempo IDEAL**. El cerebro de ${pronoun} aún tiene rastros químicos de tu presencia, lo que facilita la reconexión si actúas ahora. `;
   } else {
-    urgency = `Aunque ha pasado tiempo (${timeSeparation}), las memorias emocionales pueden reactivarse con los estímulos correctos.`;
+    urgency = `Aunque ha pasado tiempo (${timeSeparation}), la neurociencia explica que las memorias emocionales pueden ser reactivadas mediante los estímulos correctos. `;
   }
 
-  // 3. Lógica de Contato (Situação atual) - Curta (máx 3 linhas)
+  // 3. Lógica de Contato (Situação atual)
   let insight = '';
   if (currentSituation.includes('No hay contacto')) {
-    insight = `La falta de contacto es, irónicamente, tu mayor ventaja. Preparamos el terreno para un regreso impactante.`;
+    insight = `El hecho de que no haya contacto es, irónicamente, tu mayor ventaja. Estamos en la fase de "limpieza de picos de cortisol", preparando el terreno para un regreso impactante. `;
   } else {
-    insight = `El contacto actual indica que el hilo emocional no se ha cortado. Debemos evitar saturar su sistema de dopamina.`;
+    insight = `El contacto actual indica que el hilo emocional no se ha cortado, pero debemos tener cuidado de no saturar su sistema de dopamina con desesperación. `;
   }
 
-  // 4. Motivo da Ruptura - Curta (máx 3 linhas)
+  // 4. Motivo da Ruptura
   let reasonInsight = '';
-  if (reason && reason !== 'No especificado') {
-    reasonInsight = `El motivo principal fue "${reason}". El protocolo se enfocará en neutralizar esa objeción específica.`;
+  if (reason) {
+    reasonInsight = `Al analizar que el motivo principal fue "${reason}", el protocolo se enfocará en neutralizar esa objeción específica en el subconsciente de ${pronoun}. `;
   }
 
-  // Construir os bullet points para os dados do quiz
-  const quizDataBullets = `
-**Tu situación específica:**
-- **Tiempo de separación:** ${timeSeparation}
-- **Quién terminó:** ${whoEnded}
-- **Situación actual:** ${currentSituation}${reason !== 'No especificado' ? `\n- **Motivo principal:** ${reason}` : ''}
-`;
-
-  // Montar a string final, garantindo quebras de linha duplas entre blocos lógicos
-  let finalCopy = `No fue por falta de amor.
+  return `No fue por falta de amor.
 
 ${intro}
 
-${quizDataBullets}
-
 ${urgency}
 
-${insight}`;
+${insight}
 
-  if (reasonInsight) { // Adiciona o parágrafo do motivo apenas se houver um motivo especificado
-    finalCopy += `\n\n${reasonInsight}`;
-  }
+${reasonInsight}
 
-  finalCopy += `\n\nLa clave no es rogar, sino entender la psicología de ${pronoun} y actuar de forma estratégica. En el siguiente paso, voy a revelar EXACTAMENTE el paso a paso científico para que ${pronoun} sienta que SÍ eres la persona correcta.`;
-
-  return finalCopy;
+La clave no es rogar, sino entender la psicología de ${pronoun} y actuar de forma estratégica. En el siguiente paso, voy a revelar EXACTAMENTE el paso a passo científico para que ${pronoun} sienta que SÍ eres la persona correcta.`;
 }
 
 export function getVentana72Copy(gender: string): string {
