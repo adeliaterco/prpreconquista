@@ -133,7 +133,7 @@ export default function Result({ onNavigate }: ResultProps) {
       }, 300);
     }, 8000);
 
-    // Fase 3: Ventana 72h em 78s (8s + 70s após vídeo)
+    // Fase 3: Ventana 72h em 58s (8s + 50s após vídeo)
     const timerPhase3 = setTimeout(() => {
       setCurrentPhase(3);
       playKeySound();
@@ -142,9 +142,9 @@ export default function Result({ onNavigate }: ResultProps) {
       setTimeout(() => {
         ventana72SectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
-    }, 78000);
+    }, 58000);
 
-    // Fase 4: Oferta em 98s (8s + 70s + 20s)
+    // Fase 4: Oferta em 68s (58s + 10s)
     const timerPhase4 = setTimeout(() => {
       setCurrentPhase(4);
       playKeySound();
@@ -154,7 +154,7 @@ export default function Result({ onNavigate }: ResultProps) {
       setTimeout(() => {
         offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 500);
-    }, 98000);
+    }, 68000);
 
     // Countdown timer
     const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
@@ -252,7 +252,7 @@ export default function Result({ onNavigate }: ResultProps) {
         </p>
       </div>
 
-      {/* BARRA DE PROGRESSO */}
+      {/* BARRA DE PROGRESSO STICKY */}
       {currentPhase > 0 && (
         <div className="progress-bar-container fade-in">
           {phases.map((label, index) => (
@@ -266,7 +266,7 @@ export default function Result({ onNavigate }: ResultProps) {
 
       <div className="revelations-container">
         
-        {/* LOADING */}
+        {/* LOADING (Phase 0) */}
         {currentPhase === 0 && (
           <div className="revelation fade-in loading-box-custom">
             <div className="loading-inner">
@@ -286,7 +286,7 @@ export default function Result({ onNavigate }: ResultProps) {
           </div>
         )}
 
-        {/* FASE 1: DIAGNÓSTICO */}
+        {/* FASE 1: DIAGNÓSTICO (Phase 1) */}
         {currentPhase >= 1 && (
           <div ref={diagnosticoSectionRef} className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''}`}>
             <div className="revelation-header">
@@ -302,7 +302,7 @@ export default function Result({ onNavigate }: ResultProps) {
           </div>
         )}
 
-        {/* FASE 2: VÍDEO */}
+        {/* FASE 2: VÍDEO (Phase 2) */}
         {currentPhase >= 2 && (
           <div ref={videoSectionRef} className="revelation fade-in vsl-revelation">
             <div className="revelation-header">
@@ -312,10 +312,21 @@ export default function Result({ onNavigate }: ResultProps) {
             <div className="vsl-container">
               <div ref={videoSectionRef} className="vsl-placeholder"></div>
             </div>
+
+            {/* LOADING VISUAL ABAIXO DO VÍDEO */}
+            {currentPhase === 2 && (
+              <div className="loading-next-section fade-in">
+                <div className="spinner"></div>
+                <p>⏳ Preparando tu análisis de la Ventana de 72 Horas...</p>
+                <div className="loading-dots">
+                  <span>.</span><span>.</span><span>.</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* FASE 3: VENTANA 72H */}
+        {/* FASE 3: VENTANA 72H (Phase 3) */}
         {currentPhase >= 3 && (
           <div ref={ventana72SectionRef} className="revelation fade-in ventana-box-custom">
             <div className="ventana-header-custom">
@@ -336,10 +347,17 @@ export default function Result({ onNavigate }: ResultProps) {
               alt="Ventana 72h" 
               className="ventana-img"
             />
+
+            {/* LOADING DISCRETO ENTRE VENTANA E OFERTA */}
+            {currentPhase === 3 && (
+              <div className="loading-offer-hint fade-in">
+                🎯 Preparando tu oferta exclusiva...
+              </div>
+            )}
           </div>
         )}
 
-        {/* FASE 4: OFERTA COMPLETA */}
+        {/* FASE 4: OFERTA COMPLETA (Phase 4) */}
         {currentPhase >= 4 && (
           <div ref={offerSectionRef} className="revelation fade-in offer-section-custom">
             <div className="offer-badge">OFERTA EXCLUSIVA</div>
@@ -410,9 +428,9 @@ export default function Result({ onNavigate }: ResultProps) {
 
             {/* PREÇO E DESCONTO */}
             <div className="price-box">
-              <p className="price-old">Precio regular: R$ 297</p>
-              <p className="price-new">R$ 97</p>
-              <p className="price-discount">💰 67% de descuento HOY</p>
+              <p className="price-old">Precio regular: $67</p>
+              <p className="price-new">$9.90</p>
+              <p className="price-discount">💰 85% de descuento HOY</p>
             </div>
 
             <button className="cta-buy-final" onClick={handleCTAClick}>
@@ -525,6 +543,106 @@ export default function Result({ onNavigate }: ResultProps) {
         @keyframes fadeInUp {
           from { opacity: 0; transform: translateY(100%); }
           to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* LOADING VISUAL ABAIXO DO VÍDEO */
+        .loading-next-section {
+          background: rgba(234, 179, 8, 0.1);
+          border: 2px solid #eab308;
+          padding: 30px;
+          border-radius: 12px;
+          margin-top: 20px;
+          text-align: center;
+          color: #facc15;
+          font-weight: bold;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 15px;
+        }
+        .loading-next-section .spinner {
+          border: 4px solid rgba(255, 255, 255, 0.3);
+          border-top: 4px solid #facc15;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          animation: spin 1s linear infinite;
+        }
+        .loading-next-section .loading-dots span {
+          opacity: 0;
+          animation: loadingDots 1.5s infinite;
+        }
+        .loading-next-section .loading-dots span:nth-child(1) { animation-delay: 0s; }
+        .loading-next-section .loading-dots span:nth-child(2) { animation-delay: 0.5s; }
+        .loading-next-section .loading-dots span:nth-child(3) { animation-delay: 1s; }
+
+        /* LOADING DISCRETO ENTRE VENTANA E OFERTA */
+        .loading-offer-hint {
+          background: rgba(0,0,0,0.3);
+          padding: 20px;
+          border-radius: 8px;
+          margin-top: 20px;
+          text-align: center;
+          color: rgb(253, 224, 71);
+          font-weight: bold;
+        }
+
+        /* ANIMAÇÕES GERAIS */
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes loadingDots {
+          0%, 20% { opacity: 0; }
+          50% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes pulse-active {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
+          70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+        }
+
+        /* ESTILOS RESPONSIVOS */
+        @media (max-width: 768px) {
+          .progress-bar-container {
+            flex-wrap: wrap;
+            padding: 10px;
+          }
+          .progress-step {
+            flex-basis: 50%; /* 2 colunas em mobile */
+            margin-bottom: 15px;
+          }
+          .progress-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.2);
+            left: 50%;
+            top: 18px; /* Ajuste para alinhar com o centro do círculo */
+            z-index: 0;
+          }
+          .progress-step.completed:not(:last-child)::after {
+            background: rgb(74, 222, 128);
+          }
+          .progress-step:nth-child(even)::after {
+            display: none; /* Não conecta para a direita */
+          }
+          .progress-step:nth-child(odd)::after {
+            width: calc(100% + 10px); /* Ajuste para conectar entre colunas */
+            left: 50%;
+            transform: translateX(-50%);
+          }
+          .progress-step:nth-child(2)::after { /* Conecta o 2º ao 3º */
+            display: block;
+            width: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+          }
+          .progress-step:nth-child(4)::after { /* O 4º não conecta */
+            display: none;
+          }
         }
       `}</style>
     </div>
