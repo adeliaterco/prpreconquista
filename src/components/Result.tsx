@@ -22,13 +22,10 @@ interface ResultProps {
 }
 
 export default function Result({ onNavigate }: ResultProps) {
-  // --- ESTADOS DE CONTROLE DE FLUXO ---
-  const [currentPhase, setCurrentPhase] = useState(0); 
-  const [headerActivePhase, setHeaderActivePhase] = useState(0); 
-  const [offerRevealed, setOfferRevealed] = useState(false);
-  const [timeOnPage, setTimeOnPage] = useState(0);
-
-  // --- PERSISTÊNCIA DO TIMER (47 MINUTOS) ---
+  // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
+  const [currentPhase, setCurrentPhase] = useState(0); // 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
+  
+  // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
   const getInitialTime = () => {
     const savedTimestamp = localStorage.getItem('quiz_timer_start');
     if (savedTimestamp) {
@@ -46,28 +43,40 @@ export default function Result({ onNavigate }: ResultProps) {
   const [spotsLeft, setSpotsLeft] = useState(storage.getSpotsLeft());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [peopleBuying, setPeopleBuying] = useState(Math.floor(Math.random() * 5) + 1);
 
   const quizData = storage.getQuizData();
-  const gender = quizData.gender || 'HOMBRE';
-
-  // REFS PARA SCROLL E VÍDEO
   const diagnosticoSectionRef = useRef<HTMLDivElement>(null);
   const videoSectionRef = useRef<HTMLDivElement>(null);
   const ventana72SectionRef = useRef<HTMLDivElement>(null);
   const offerSectionRef = useRef<HTMLDivElement>(null);
 
-  // ACELERAÇÃO: Loading de 2.5s totais
+  const gender = quizData.gender || 'HOMBRE';
+
+  // Loading steps (2 steps - 2.5s total)
   const loadingSteps = [
     { icon: '📊', text: 'Respuestas procesadas', duration: 0 },
-    { icon: '🧠', text: 'Generando diagnóstico personalizado...', duration: 1000 }
+    { icon: '🧠', text: 'Generando tu diagnóstico personalizado...', duration: 1000 }
   ];
 
-  // --- SISTEMA DE UTMs (MANTIDO) ---
+  // --- SISTEMA DE PRESERVAÇÃO DE UTMs ---
   const getUTMs = (): Record<string, string> => {
     try {
       const storedUTMs = localStorage.getItem('quiz_utms');
       return storedUTMs ? JSON.parse(storedUTMs) : {};
-    } catch (error) { return {}; }
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const ensureUTMs = () => {
+    const utms = getUTMs();
+    if (Object.keys(utms).length > 0 && window.location.search === '') {
+      const utmString = Object.entries(utms)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value as string)}`)
+        .join('&');
+      window.history.replaceState({}, '', `${window.location.pathname}?${utmString}`);
+    }
   };
 
   const appendUTMsToHotmartURL = (): string => {
@@ -75,80 +84,127 @@ export default function Result({ onNavigate }: ResultProps) {
     const utms = getUTMs();
     if (Object.keys(utms).length === 0) return baseURL;
     const url = new URL(baseURL);
-    Object.entries(utms).forEach(([k, v]) => url.searchParams.set(k, v as string));
+    Object.entries(utms).forEach(([key, value]) => url.searchParams.set(key, value as string));
     return url.toString();
   };
 
-  // --- LÓGICAS DE REVELAÇÃO ---
-  const revealOffer = () => {
-    if (offerRevealed) return;
-    setOfferRevealed(true);
-    setCurrentPhase(4);
-    playKeySound();
-    ga4Tracking.offerRevealed();
-    setTimeout(() => offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 500);
-  };
-
-  // --- EFEITO PRINCIPAL DE PROGRESSÃO ---
+  // --- EFEITO PRINCIPAL DE PROGRESSÃO AUTOMÁTICA ---
   useEffect(() => {
+    ensureUTMs();
     tracking.pageView('resultado');
     ga4Tracking.resultPageView();
 
-    const timeInterval = setInterval(() => setTimeOnPage(prev => prev + 1), 1000);
-
-    // Loading Acelerado
+    // Loading progress
     const progressInterval = setInterval(() => {
-      setLoadingProgress(prev => (prev >= 100 ? 100 : prev + 4));
+      setLoadingProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(progressInterval);
+          return 100;
+        }
+        return prev + 4;
+      });
     }, 100);
 
+    // Loading steps
     loadingSteps.forEach((step, index) => {
       setTimeout(() => setLoadingStep(index), step.duration);
     });
 
-    // Fase 1: Diagnóstico (2.5s)
-    setTimeout(() => {
+    // PROGRESSÃO AUTOMÁTICA POR TEMPO
+    // Fase 1: Diagnóstico em 2.5s
+    const timerPhase1 = setTimeout(() => {
       setCurrentPhase(1);
-      setHeaderActivePhase(1);
       playKeySound();
+      tracking.revelationViewed('why_left');
+      ga4Tracking.revelationViewed('Por qué te dejó', 1);
+      setTimeout(() => {
+        diagnosticoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
     }, 2500);
 
-    // Fase 2: Vídeo (8s totais)
-    setTimeout(() => {
+    // Fase 2: Vídeo em 8s
+    const timerPhase2 = setTimeout(() => {
       setCurrentPhase(2);
-      setHeaderActivePhase(2);
       playKeySound();
       tracking.vslEvent('started');
+      ga4Tracking.videoStarted();
+      setTimeout(() => {
+        videoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
     }, 8000);
 
+    // Fase 3: Ventana 72h em 78s (8s + 70s após vídeo)
+    const timerPhase3 = setTimeout(() => {
+      setCurrentPhase(3);
+      playKeySound();
+      tracking.revelationViewed('72h_window');
+      ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
+      setTimeout(() => {
+        ventana72SectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }, 78000);
+
+    // Fase 4: Oferta em 98s (8s + 70s + 20s)
+    const timerPhase4 = setTimeout(() => {
+      setCurrentPhase(4);
+      playKeySound();
+      tracking.revelationViewed('offer');
+      ga4Tracking.revelationViewed('Oferta Revelada', 3);
+      ga4Tracking.offerRevealed();
+      setTimeout(() => {
+        offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 500);
+    }, 98000);
+
+    // Countdown timer
     const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
 
+    // Spots interval
+    const spotsInterval = setInterval(() => {
+      setSpotsLeft(prev => {
+        if (prev > 15) {
+          const newSpots = prev - 1;
+          storage.setSpotsLeft(newSpots);
+          ga4Tracking.spotsUpdated(newSpots);
+          return newSpots;
+        }
+        return prev;
+      });
+    }, 45000);
+
+    // Gamificação: Contador de pessoas comprando
+    const buyingInterval = setInterval(() => {
+      setPeopleBuying(prev => {
+        const change = Math.random() > 0.5 ? 1 : -1;
+        let newCount = prev + change;
+        if (newCount < 1) newCount = 1;
+        if (newCount > 7) newCount = 7;
+        return newCount;
+      });
+    }, Math.floor(Math.random() * 10000) + 5000);
+
     return () => {
-      clearInterval(timeInterval);
       clearInterval(progressInterval);
+      clearTimeout(timerPhase1);
+      clearTimeout(timerPhase2);
+      clearTimeout(timerPhase3);
+      clearTimeout(timerPhase4);
       clearInterval(countdownInterval);
+      clearInterval(spotsInterval);
+      clearInterval(buyingInterval);
     };
   }, []);
 
-  // Monitor de Interação para Revelação Condicional
+  // Redirecionamento por expiração
   useEffect(() => {
-    const checkReveals = () => {
-      if (currentPhase >= 2 && !ventanaRevealed) {
-        const videoBottom = videoSectionRef.current?.getBoundingClientRect().bottom || 0;
-        if (videoBottom < -100 || timeOnPage >= 120) {
-          setCurrentPhase(3);
-          setHeaderActivePhase(3);
-        }
-      }
-      if (!offerRevealed) {
-        if (timeOnPage >= 300) revealOffer();
-        else if (videoSectionRef.current && videoSectionRef.current.getBoundingClientRect().bottom < 0 && currentPhase >= 2) revealOffer();
-      }
-    };
-    window.addEventListener('scroll', checkReveals);
-    return () => window.removeEventListener('scroll', checkReveals);
-  }, [timeOnPage, currentPhase, offerRevealed]);
+    if (timeLeft <= 0 && currentPhase > 0) {
+      alert('Tu análisis ha expirado. Por favor, completa el quiz nuevamente.');
+      localStorage.removeItem('quiz_timer_start');
+      window.location.href = '/';
+    }
+  }, [timeLeft, currentPhase]);
 
-  // Injeção VTurb (MANTIDO)
+  // Injeção VTurb
   useEffect(() => {
     if (currentPhase !== 2 || !videoSectionRef.current) return;
     const timer = setTimeout(() => {
@@ -175,6 +231,12 @@ export default function Result({ onNavigate }: ResultProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleCTAClick = () => {
+    tracking.ctaClicked('result_buy');
+    ga4Tracking.ctaBuyClicked('result_buy_main');
+    window.open(appendUTMsToHotmartURL(), '_blank');
+  };
+
   const phases = ['Diagnóstico', 'Vídeo', 'Ventana 72h', 'Solución'];
 
   return (
@@ -182,16 +244,20 @@ export default function Result({ onNavigate }: ResultProps) {
       <div className="result-header">
         <h1 className="result-title">Tu Plan Personalizado Está Listo</h1>
         <div className="urgency-bar">
-          <span className="urgency-text">⏱️ Tu análise expira en: {formatTime(timeLeft)}</span>
+          <span className="urgency-icon">⚠️</span>
+          <span className="urgency-text">Tu análisis expira en: {formatTime(timeLeft)}</span>
         </div>
+        <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: '8px' }}>
+          Por seguridad, tu diagnóstico personalizado estará disponible solo por 47 minutos.
+        </p>
       </div>
 
-      {/* BARRA DE PROGRESSO STICKY */}
+      {/* BARRA DE PROGRESSO */}
       {currentPhase > 0 && (
         <div className="progress-bar-container fade-in">
           {phases.map((label, index) => (
-            <div key={index} className={`progress-step ${headerActivePhase > index + 1 ? 'completed' : ''} ${headerActivePhase === index + 1 ? 'active' : ''}`}>
-              <div className="step-circle">{headerActivePhase > index + 1 ? '✅' : index + 1}</div>
+            <div key={index} className={`progress-step ${currentPhase > index + 1 ? 'completed' : ''} ${currentPhase === index + 1 ? 'active' : ''}`}>
+              <div className="step-circle">{currentPhase > index + 1 ? '✅' : index + 1}</div>
               <span className="step-label">{label}</span>
             </div>
           ))}
@@ -200,185 +266,266 @@ export default function Result({ onNavigate }: ResultProps) {
 
       <div className="revelations-container">
         
-        {/* 0. LOADING ACELERADO */}
+        {/* LOADING */}
         {currentPhase === 0 && (
           <div className="revelation fade-in loading-box-custom">
-            <div className="spin-brain">🧠</div>
-            <h2>ANALIZANDO TU CASO</h2>
-            <p>{getLoadingMessage(gender)}</p>
-            <div className="loading-steps">
-              {loadingSteps.map((step, i) => (
-                <div key={i} className={`step-item ${i <= loadingStep ? 'active' : ''}`}>
-                  {i < loadingStep ? '✅' : step.icon} {step.text}
-                </div>
-              ))}
-            </div>
-            <div className="progress-track"><div className="progress-fill" style={{ width: `${loadingProgress}%` }}></div></div>
-          </div>
-        )}
-
-        {/* 1. DIAGNÓSTICO */}
-        {currentPhase >= 1 && (
-          <div ref={diagnosticoSectionRef} className="revelation fade-in">
-            <div className="revelation-header">💔 <h2>{getTitle(gender)}</h2></div>
-            <div className="quiz-data-box">
-              <p className="box-title">📋 TU SITUACIÓN ESPECÍFICA</p>
-              <div className="data-grid">
-                <div><span>✓</span> <strong>Tiempo:</strong> {quizData.timeSeparation}</div>
-                <div><span>✓</span> <strong>Ruptura:</strong> {quizData.whoEnded}</div>
-                <div><span>✓</span> <strong>Contacto:</strong> {quizData.currentSituation}</div>
+            <div className="loading-inner">
+              <div className="spin-brain">🧠</div>
+              <h2>ANALIZANDO TU CASO</h2>
+              <p>{getLoadingMessage(gender)}</p>
+              <div className="loading-steps-list">
+                {loadingSteps.map((step, i) => (
+                  <div key={i} className={`loading-step-item ${i <= loadingStep ? 'active' : ''}`}>
+                    {i < loadingStep ? '✅' : step.icon} {step.text}
+                  </div>
+                ))}
               </div>
+              <div className="progress-outer"><div className="progress-inner" style={{ width: `${loadingProgress}%` }}></div></div>
+              <div className="progress-labels"><span>{loadingProgress}%</span><span>⏱️ {Math.ceil((100 - loadingProgress) / 10)}s...</span></div>
             </div>
-            <p className="revelation-text" style={{ whiteSpace: 'pre-line' }}>{getCopy(quizData)}</p>
           </div>
         )}
 
-        {/* 2. VÍDEO + COMPONENTE DE RETENÇÃO */}
+        {/* FASE 1: DIAGNÓSTICO */}
+        {currentPhase >= 1 && (
+          <div ref={diagnosticoSectionRef} className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''}`}>
+            <div className="revelation-header">
+              <div className="revelation-icon">💔</div>
+              <h2>{getTitle(gender)}</h2>
+            </div>
+            
+            <p className="revelation-text" style={{ whiteSpace: 'pre-line' }}>{getCopy(quizData)}</p>
+
+            <div className="emotional-validation">
+              <p><strong>Tu situación específica:</strong><br />{getEmotionalValidation(quizData)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* FASE 2: VÍDEO */}
         {currentPhase >= 2 && (
           <div ref={videoSectionRef} className="revelation fade-in vsl-revelation">
-            <div className="revelation-header">🎥 <h2>Cómo Reactivar Los Interruptores Emocionales</h2></div>
-            <div className="vsl-container"><div className="vsl-placeholder"></div></div>
-            
-            {/* COMPONENTE DE RETENÇÃO INTELIGENTE */}
-            {!offerRevealed && (
-              <div className="retention-box">
-                <div className="retention-header">
-                  <div className="pulse-dot"></div>
-                  <span>SINCRONIZANDO TU PROTOCOLO DE 21 DÍAS...</span>
-                </div>
-                <div className="retention-progress-track">
-                  <div className="retention-progress-fill" style={{ width: `${Math.min(timeOnPage * 0.5, 98)}%` }}></div>
-                </div>
-                <p className="retention-msg">
-                  {timeOnPage < 60 ? "🔍 Analizando patrones de comportamiento..." : 
-                   timeOnPage < 120 ? "⚡ Calculando ventana de 72 horas..." : 
-                   "🎁 Finalizando tu oferta especial de $9,90..."}
-                </p>
-                <p className="retention-sub">No cierres esta página para no perder tu diagnóstico.</p>
-              </div>
-            )}
+            <div className="revelation-header">
+              <div className="revelation-icon">🎥</div>
+              <h2>Cómo Reactivar Los Interruptores Emocionales En 72 Horas</h2>
+            </div>
+            <div className="vsl-container">
+              <div ref={videoSectionRef} className="vsl-placeholder"></div>
+            </div>
           </div>
         )}
 
-        {/* 3. VENTANA 72H */}
+        {/* FASE 3: VENTANA 72H */}
         {currentPhase >= 3 && (
-          <div ref={ventana72SectionRef} className="revelation fade-in ventana-box">
-            <h2>⚡ LA VENTANA DE 72 HORAS</h2>
-            <p>{getVentana72Copy(gender)}</p>
-            <div className="fases-grid">
+          <div ref={ventana72SectionRef} className="revelation fade-in ventana-box-custom">
+            <div className="ventana-header-custom">
+              <span>⚡</span>
+              <h2>LA VENTANA DE 72 HORAS</h2>
+            </div>
+            <p className="ventana-intro">{getVentana72Copy(gender)}</p>
+            <div className="fases-list">
               {[1, 2, 3].map(f => (
-                <div key={f} className="fase-card">
-                  <strong>FASE {f}</strong>
+                <div key={f} className="fase-item-custom">
+                  <strong>FASE {f} ({f === 1 ? '0-24h' : f === 2 ? '24-48h' : '48-72h'})</strong>
                   <p>{getFaseText(gender, f)}</p>
                 </div>
               ))}
             </div>
+            <img 
+              src="https://comprarplanseguro.shop/wp-content/uploads/2025/10/imagem3-nova.webp" 
+              alt="Ventana 72h" 
+              className="ventana-img"
+            />
           </div>
         )}
 
-        {/* BOTÃO REVELAR SOLUÇÃO */}
-        {currentPhase >= 3 && !offerRevealed && (
-          <div className="manual-reveal">
-            <button onClick={revealOffer} className="btn-reveal">🎯 VER MI PLAN DE 21 DÍAS AHORA</button>
-          </div>
-        )}
-
-        {/* 4. OFERTA IMPECÁVEL (ROADMAP 21 DIAS) */}
+        {/* FASE 4: OFERTA COMPLETA */}
         {currentPhase >= 4 && (
-          <div ref={offerSectionRef} className="revelation fade-in offer-section">
+          <div ref={offerSectionRef} className="revelation fade-in offer-section-custom">
             <div className="offer-badge">OFERTA EXCLUSIVA</div>
             <h2 className="offer-title-main">{getOfferTitle(gender)}</h2>
 
-            {/* ROADMAP VISUAL */}
-            <div className="roadmap-21-days">
-              <div className="roadmap-step">
-                <div className="step-day">DÍAS 1-7</div>
-                <div className="step-info">
-                  <strong>Fase de Conexión Subconsciente</strong>
-                  <p>Protocolos para derribar las barreras de {gender === 'HOMBRE' ? 'ella' : 'él'}.</p>
-                </div>
-              </div>
-              <div className="roadmap-step">
-                <div className="step-day">DÍAS 8-14</div>
-                <div className="step-info">
-                  <strong>Reactivación de la Atração</strong>
-                  <p>El paso a paso para el primer encuentro y reencender la chispa.</p>
-                </div>
-              </div>
-              <div className="roadmap-step">
-                <div className="step-day">DÍAS 15-21</div>
-                <div className="step-info">
-                  <strong>Consolidación del Regreso</strong>
-                  <p>Cómo sellar o compromiso e asegurar que no se vuelva a ir.</p>
-                </div>
-              </div>
+            {/* BOX DE DADOS DO QUIZ */}
+            <div className="quiz-summary-box" style={{
+              background: 'rgba(234, 179, 8, 0.1)',
+              border: '2px solid rgba(234, 179, 8, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '30px'
+            }}>
+              <p style={{
+                fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
+                color: 'rgb(253, 224, 71)',
+                marginBottom: 'clamp(12px, 3vw, 16px)',
+                fontWeight: 'bold'
+              }}>
+                Basado en tu situación específica:
+              </p>
+              <ul style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
+                color: 'white',
+                lineHeight: '1.8'
+              }}>
+                <li>✓ <strong>Tiempo:</strong> {quizData.timeSeparation || 'No especificado'}</li>
+                <li>✓ <strong>Quién terminó:</strong> {quizData.whoEnded || 'No especificado'}</li>
+                <li>✓ <strong>Contacto:</strong> {quizData.currentSituation || 'No especificado'}</li>
+                <li>✓ <strong>Compromiso:</strong> {quizData.commitmentLevel || 'No especificado'}</li>
+              </ul>
             </div>
 
-            {/* PREÇO E ANCORAGEM */}
-            <div className="price-container-final">
-              <p className="price-anchor">Precio regular: $67</p>
-              <p className="price-main">$9,90</p>
-              <p className="price-save">💰 AHORRAS $57,10 HOY</p>
+            {/* FEATURES COM CHECKMARKS */}
+            <div className="offer-features" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'clamp(12px, 3vw, 16px)',
+              marginBottom: 'clamp(24px, 5vw, 32px)'
+            }}>
+              {getFeatures(gender).map((feature, index) => (
+                <div key={index} className="feature" style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 'clamp(10px, 3vw, 12px)',
+                  padding: 'clamp(8px, 2vw, 12px) 0'
+                }}>
+                  <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{
+                    minWidth: 'clamp(20px, 5vw, 24px)',
+                    width: 'clamp(20px, 5vw, 24px)',
+                    height: 'clamp(20px, 5vw, 24px)',
+                    marginTop: '2px',
+                    color: '#4ade80'
+                  }}>
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span style={{
+                    fontSize: 'clamp(0.9rem, 3.5vw, 1.125rem)',
+                    lineHeight: '1.5',
+                    flex: 1
+                  }}>{feature}</span>
+                </div>
+              ))}
             </div>
 
-            <button className="cta-buy-final" onClick={() => window.open(appendUTMsToHotmartURL(), '_blank')}>
-              {getCTA(gender)}
+            {/* PREÇO E DESCONTO */}
+            <div className="price-box">
+              <p className="price-old">Precio regular: R$ 297</p>
+              <p className="price-new">R$ 97</p>
+              <p className="price-discount">💰 67% de descuento HOY</p>
+            </div>
+
+            <button className="cta-buy-final" onClick={handleCTAClick}>
+              🎯 {getCTA(gender)}
             </button>
 
-            {/* GARANTIA 30 DIAS */}
-            <div className="guarantee-badge-30">
-              <img src="https://cdn-icons-png.flaticon.com/512/3503/3503458.png" alt="Garantia" />
-              <div>
-                <strong>GARANTÍA TOTAL DE 30 DÍAS</strong>
-                <p>Si no recuperas a tu pareja en 30 días, te devolvemos el 100% de tu dinero.</p>
+            {/* PROVA SOCIAL REAL */}
+            <div className="real-proof-box">
+              <p>⭐ <strong>4.8/5 estrellas</strong> (2.341 avaliações verificadas)</p>
+              <p>📱 Última compra hace 4 minutos</p>
+            </div>
+
+            <div className="trust-icons">
+              <span>🔒 Compra segura</span>
+              <span>✅ Acceso instantáneo</span>
+              <span>↩️ 7 días de garantía</span>
+            </div>
+
+            {/* URGÊNCIA COM JUSTIFICATIVA */}
+            <div className="final-urgency-grid">
+              <div className="urgency-item">
+                <span>Tiempo restante:</span>
+                <strong>{formatTime(timeLeft)}</strong>
+              </div>
+              <div className="urgency-item">
+                <span>Vacantes VIP hoy:</span>
+                <strong>{spotsLeft}/50</strong>
+                <small>(Limitado para soporte personalizado)</small>
               </div>
             </div>
 
-            <div className="social-proof-footer">
-              ⭐ <strong>4.8/5</strong> (+12.847 reconquistas exitosas)
-            </div>
+            {/* GAMIFICAÇÃO: PESSOAS COMPRANDO */}
+            <p className="people-buying-counter" style={{
+              textAlign: 'center',
+              color: 'rgb(74, 222, 128)',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
+              marginTop: 'clamp(16px, 4vw, 20px)',
+              marginBottom: 'clamp(12px, 3vw, 16px)',
+              lineHeight: '1.5',
+              fontWeight: '600'
+            }}>
+              ✨ {peopleBuying} personas están comprando ahora mismo
+            </p>
+
+            {/* PROVA SOCIAL +12.847 */}
+            <p className="social-proof-count" style={{
+              textAlign: 'center',
+              color: 'rgb(74, 222, 128)',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
+              marginBottom: 'clamp(12px, 3vw, 16px)',
+              lineHeight: '1.5',
+              fontWeight: '600'
+            }}>
+              ✓ +12.847 reconquistas exitosas
+            </p>
+
+            {/* EXCLUSIVIDADE */}
+            <p className="guarantee-text" style={{
+              textAlign: 'center',
+              fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
+              lineHeight: '1.6',
+              color: 'rgba(255, 255, 255, 0.9)',
+              padding: '0 8px'
+            }}>
+              Exclusivo para quien completó el análisis personalizado
+            </p>
           </div>
         )}
       </div>
 
+      {/* STICKY FOOTER */}
+      {currentPhase >= 4 && (
+        <div className="sticky-footer-urgency fade-in-up">
+          ⏰ {formatTime(timeLeft)} • {spotsLeft} spots restantes
+        </div>
+      )}
+
       <style jsx>{`
-        .result-container { padding-bottom: 100px; max-width: 600px; margin: 0 auto; }
+        .result-container { padding-bottom: 100px; }
+        .diagnostic-pulse { animation: diagnosticPulse 1s ease-in-out 2; }
+        @keyframes diagnosticPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 8px 32px rgba(234, 179, 8, 0.3); }
+          50% { transform: scale(1.02); box-shadow: 0 12px 48px rgba(234, 179, 8, 0.5); }
+        }
         .loading-box-custom { background: rgba(234, 179, 8, 0.1); border: 2px solid #eab308; border-radius: 16px; padding: 40px; text-align: center; }
-        .spin-brain { font-size: 4rem; animation: spin 2s linear infinite; }
-        .progress-track { width: 100%; height: 8px; background: #222; border-radius: 10px; margin-top: 20px; overflow: hidden; }
-        .progress-fill { height: 100%; background: #eab308; transition: width 0.3s; }
-        
-        .quiz-data-box { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 20px 0; border: 1px solid #eab30833; }
-        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem; }
-        .data-grid span { color: #4ade80; }
-
-        .retention-box { background: rgba(234, 179, 8, 0.05); border: 1px solid #eab30855; border-radius: 12px; padding: 20px; margin-top: 20px; text-align: center; }
-        .pulse-dot { width: 8px; height: 8px; background: #eab308; border-radius: 50%; display: inline-block; margin-right: 10px; animation: pulse 1.5s infinite; }
-        .retention-progress-track { width: 100%; height: 6px; background: #111; border-radius: 10px; margin: 15px 0; overflow: hidden; }
-        .retention-progress-fill { height: 100%; background: #eab308; transition: width 1s linear; }
-        .retention-msg { color: #fde047; font-weight: bold; font-size: 0.95rem; }
-
-        .roadmap-21-days { margin: 30px 0; display: flex; flex-direction: column; gap: 15px; }
-        .roadmap-step { display: flex; gap: 15px; background: #111; padding: 15px; border-radius: 12px; border-left: 5px solid #eab308; }
-        .step-day { font-weight: 900; color: #eab308; min-width: 80px; }
-
-        .price-container-final { text-align: center; margin: 30px 0; }
-        .price-anchor { text-decoration: line-through; opacity: 0.5; margin: 0; }
-        .price-main { font-size: 4rem; color: #facc15; font-weight: 900; margin: 5px 0; }
-        .price-save { color: #4ade80; font-weight: bold; }
-
+        .price-box { text-align: center; margin-bottom: 25px; }
+        .price-old { text-decoration: line-through; opacity: 0.6; margin: 0; }
+        .price-new { font-size: 3rem; color: #facc15; font-weight: 900; margin: 5px 0; }
+        .price-discount { color: #4ade80; font-weight: bold; }
         .cta-buy-final { width: 100%; background: #eab308; color: black; font-weight: 900; padding: 20px; border-radius: 12px; font-size: 1.5rem; border: 3px solid white; cursor: pointer; }
-        .guarantee-badge-30 { display: flex; gap: 15px; align-items: center; margin-top: 25px; background: rgba(6, 78, 59, 0.2); padding: 15px; border-radius: 10px; border: 1px solid #05966955; }
-        .guarantee-badge-30 img { width: 40px; }
-        .guarantee-badge-30 p { font-size: 0.8rem; margin: 0; opacity: 0.8; }
-
-        .progress-bar-container { display: flex; justify-content: space-between; padding: 15px; background: #000; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #333; }
-        .step-circle { width: 28px; height: 28px; border-radius: 50%; background: #333; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+        .real-proof-box { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 15px; text-align: center; color: #4ade80; margin: 20px 0; }
+        .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; }
+        .final-urgency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .urgency-item { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; text-align: center; }
+        .urgency-item strong { display: block; font-size: 1.5rem; }
+        .sticky-footer-urgency { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.95); padding: 15px; color: #fde047; text-align: center; z-index: 1000; border-top: 2px solid #eab308; font-weight: bold; }
+        .progress-bar-container { display: flex; justify-content: space-between; margin: 20px auto; max-width: 800px; padding: 15px; background: rgba(0,0,0,0.4); border-radius: 12px; position: sticky; top: 0; z-index: 999; backdrop-filter: blur(5px); }
+        .progress-step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; color: rgba(255,255,255,0.5); font-size: 0.8rem; }
+        .step-circle { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; justify-content: center; align-items: center; margin-bottom: 5px; }
         .progress-step.active .step-circle { background: #eab308; color: black; }
-        .progress-step.completed .step-circle { background: #4ade80; }
-
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
+        .progress-step.completed .step-circle { background: #4ade80; color: white; }
+        .ventana-img { width: 100%; max-width: 600px; border-radius: 12px; margin: 20px auto; display: block; }
+        .emotional-validation { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 20px; margin-top: 20px; color: #4ade80; }
+        .fade-in { animation: fadeIn 0.6s ease-in-out; }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(100%); }
+          to { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
     </div>
   );
