@@ -22,10 +22,13 @@ interface ResultProps {
 }
 
 export default function Result({ onNavigate }: ResultProps) {
-  // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
+  // --- ESTADO UNIFICADO E CONTROLE DE FLUXO (Alteração #4) ---
   const [currentPhase, setCurrentPhase] = useState(0); // 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
-  
-  // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
+  const [offerRevealed, setOfferRevealed] = useState(false);
+  const [ventanaRevealed, setVentanaRevealed] = useState(false);
+  const [timeOnPage, setTimeOnPage] = useState(0);
+
+  // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE (Alteração #9) ---
   const getInitialTime = () => {
     const savedTimestamp = localStorage.getItem('quiz_timer_start');
     if (savedTimestamp) {
@@ -43,7 +46,6 @@ export default function Result({ onNavigate }: ResultProps) {
   const [spotsLeft, setSpotsLeft] = useState(storage.getSpotsLeft());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStep, setLoadingStep] = useState(0);
-  const [peopleBuying, setPeopleBuying] = useState(Math.floor(Math.random() * 5) + 1);
 
   const quizData = storage.getQuizData();
   const diagnosticoSectionRef = useRef<HTMLDivElement>(null);
@@ -53,13 +55,13 @@ export default function Result({ onNavigate }: ResultProps) {
 
   const gender = quizData.gender || 'HOMBRE';
 
-  // Loading steps (2 steps - 2.5s total)
+  // ALTERAÇÃO #1: Redução de steps para 2.5s totais de loading
   const loadingSteps = [
     { icon: '📊', text: 'Respuestas procesadas', duration: 0 },
     { icon: '🧠', text: 'Generando tu diagnóstico personalizado...', duration: 1000 }
   ];
 
-  // --- SISTEMA DE PRESERVAÇÃO DE UTMs ---
+  // --- SISTEMA DE PRESERVAÇÃO DE UTMs (MANTIDO) ---
   const getUTMs = (): Record<string, string> => {
     try {
       const storedUTMs = localStorage.getItem('quiz_utms');
@@ -88,114 +90,128 @@ export default function Result({ onNavigate }: ResultProps) {
     return url.toString();
   };
 
-  // --- EFEITO PRINCIPAL DE PROGRESSÃO AUTOMÁTICA ---
+  // --- LÓGICAS DE REVELAÇÃO CONDICIONAL (Alteração #2 e #5) ---
+  const revealOffer = () => {
+    if (offerRevealed) return;
+    setOfferRevealed(true);
+    setCurrentPhase(4);
+    playKeySound();
+    tracking.revelationViewed('offer');
+    ga4Tracking.revelationViewed('Oferta Revelada', 3);
+    ga4Tracking.offerRevealed();
+    
+    setTimeout(() => {
+      offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 500);
+  };
+
+  const revealVentana = () => {
+    if (ventanaRevealed) return;
+    setVentanaRevealed(true);
+    setCurrentPhase(3);
+    playKeySound();
+    tracking.revelationViewed('72h_window');
+    ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
+  };
+
+  // --- EFEITO PRINCIPAL DE PROGRESSÃO ---
   useEffect(() => {
     ensureUTMs();
     tracking.pageView('resultado');
     ga4Tracking.resultPageView();
 
-    // Loading progress
+    const timeInterval = setInterval(() => setTimeOnPage(prev => prev + 1), 1000);
+
+    // Loading acelerado (Alteração #1)
     const progressInterval = setInterval(() => {
       setLoadingProgress(prev => {
         if (prev >= 100) {
           clearInterval(progressInterval);
           return 100;
         }
-        return prev + 4;
+        return prev + 4; // Incremento de 4 em 4
       });
     }, 100);
 
-    // Loading steps
     loadingSteps.forEach((step, index) => {
       setTimeout(() => setLoadingStep(index), step.duration);
     });
 
-    // PROGRESSÃO AUTOMÁTICA POR TEMPO
-    // Fase 1: Diagnóstico em 2.5s
+    // Fase 1: Diagnóstico em 2.5s (Alteração #1 e #10)
     const timerPhase1 = setTimeout(() => {
       setCurrentPhase(1);
       playKeySound();
-      tracking.revelationViewed('why_left');
-      ga4Tracking.revelationViewed('Por qué te dejó', 1);
       setTimeout(() => {
         diagnosticoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }, 2500);
 
-    // Fase 2: Vídeo em 8s
+    // Fase 2: Vídeo (Alteração #10)
     const timerPhase2 = setTimeout(() => {
       setCurrentPhase(2);
       playKeySound();
       tracking.vslEvent('started');
-      ga4Tracking.videoStarted();
       setTimeout(() => {
         videoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }, 8000);
 
-    // Fase 3: Ventana 72h em 58s (8s + 50s após vídeo)
-    const timerPhase3 = setTimeout(() => {
-      setCurrentPhase(3);
-      playKeySound();
-      tracking.revelationViewed('72h_window');
-      ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
-      setTimeout(() => {
-        ventana72SectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 300);
-    }, 58000);
-
-    // Fase 4: Oferta em 68s (58s + 10s)
-    const timerPhase4 = setTimeout(() => {
-      setCurrentPhase(4);
-      playKeySound();
-      tracking.revelationViewed('offer');
-      ga4Tracking.revelationViewed('Oferta Revelada', 3);
-      ga4Tracking.offerRevealed();
-      setTimeout(() => {
-        offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 500);
-    }, 68000);
-
-    // Countdown timer
     const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
 
-    // Spots interval
     const spotsInterval = setInterval(() => {
       setSpotsLeft(prev => {
         if (prev > 15) {
           const newSpots = prev - 1;
           storage.setSpotsLeft(newSpots);
-          ga4Tracking.spotsUpdated(newSpots);
           return newSpots;
         }
         return prev;
       });
     }, 45000);
 
-    // Gamificação: Contador de pessoas comprando
-    const buyingInterval = setInterval(() => {
-      setPeopleBuying(prev => {
-        const change = Math.random() > 0.5 ? 1 : -1;
-        let newCount = prev + change;
-        if (newCount < 1) newCount = 1;
-        if (newCount > 7) newCount = 7;
-        return newCount;
-      });
-    }, Math.floor(Math.random() * 10000) + 5000);
-
     return () => {
+      clearInterval(timeInterval);
       clearInterval(progressInterval);
       clearTimeout(timerPhase1);
       clearTimeout(timerPhase2);
-      clearTimeout(timerPhase3);
-      clearTimeout(timerPhase4);
       clearInterval(countdownInterval);
       clearInterval(spotsInterval);
-      clearInterval(buyingInterval);
     };
   }, []);
 
-  // Redirecionamento por expiração
+  // Monitor de Interação para Revelação (Alteração #2 e #5)
+  useEffect(() => {
+    const checkReveals = () => {
+      // Ventana 72h: Scroll 100px abaixo do vídeo ou 2 min após vídeo iniciar
+      if (currentPhase >= 2 && !ventanaRevealed) {
+        const videoBottom = videoSectionRef.current?.getBoundingClientRect().bottom || 0;
+        if (videoBottom < -100 || timeOnPage >= 128) {
+          revealVentana();
+        }
+      }
+
+      // Oferta: Scroll abaixo do vídeo ou 5 min total na página
+      if (!offerRevealed) {
+        if (timeOnPage >= 300) {
+          revealOffer();
+        } else if (videoSectionRef.current) {
+          const videoBottom = videoSectionRef.current.getBoundingClientRect().bottom;
+          if (videoBottom < 0 && currentPhase >= 2) {
+            revealOffer();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', checkReveals);
+    const interval = setInterval(checkReveals, 1000);
+    return () => {
+      window.removeEventListener('scroll', checkReveals);
+      clearInterval(interval);
+    };
+  }, [timeOnPage, currentPhase, offerRevealed, ventanaRevealed]);
+
+  // Redirecionamento por expiração (Alteração #9)
   useEffect(() => {
     if (timeLeft <= 0 && currentPhase > 0) {
       alert('Tu análisis ha expirado. Por favor, completa el quiz nuevamente.');
@@ -204,7 +220,7 @@ export default function Result({ onNavigate }: ResultProps) {
     }
   }, [timeLeft, currentPhase]);
 
-  // Injeção VTurb
+  // Injeção VTurb (MANTIDO)
   useEffect(() => {
     if (currentPhase !== 2 || !videoSectionRef.current) return;
     const timer = setTimeout(() => {
@@ -252,7 +268,7 @@ export default function Result({ onNavigate }: ResultProps) {
         </p>
       </div>
 
-      {/* BARRA DE PROGRESSO STICKY */}
+      {/* BARRA DE PROGRESSO UNIFICADA (Alteração #4) */}
       {currentPhase > 0 && (
         <div className="progress-bar-container fade-in">
           {phases.map((label, index) => (
@@ -266,7 +282,7 @@ export default function Result({ onNavigate }: ResultProps) {
 
       <div className="revelations-container">
         
-        {/* LOADING (Phase 0) */}
+        {/* LOADING ACELERADO (Alteração #1) */}
         {currentPhase === 0 && (
           <div className="revelation fade-in loading-box-custom">
             <div className="loading-inner">
@@ -286,7 +302,7 @@ export default function Result({ onNavigate }: ResultProps) {
           </div>
         )}
 
-        {/* FASE 1: DIAGNÓSTICO (Phase 1) */}
+        {/* FASE 1: DIAGNÓSTICO (Alteração #6 e #11) */}
         {currentPhase >= 1 && (
           <div ref={diagnosticoSectionRef} className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''}`}>
             <div className="revelation-header">
@@ -294,6 +310,17 @@ export default function Result({ onNavigate }: ResultProps) {
               <h2>{getTitle(gender)}</h2>
             </div>
             
+            {/* BOX DE DADOS REAIS (Alteração #6) */}
+            <div className="quiz-summary-box">
+              <p className="summary-title">📋 TU SITUACIÓN ESPECÍFICA</p>
+              <div className="summary-grid">
+                <div><span>✓</span> <strong>Tiempo:</strong> {quizData.timeSeparation || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Quién terminó:</strong> {quizData.whoEnded || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Contacto:</strong> {quizData.currentSituation || 'No especificado'}</div>
+                <div><span>✓</span> <strong>Compromiso:</strong> {quizData.commitmentLevel || 'No especificado'}</div>
+              </div>
+            </div>
+
             <p className="revelation-text" style={{ whiteSpace: 'pre-line' }}>{getCopy(quizData)}</p>
 
             <div className="emotional-validation">
@@ -302,7 +329,7 @@ export default function Result({ onNavigate }: ResultProps) {
           </div>
         )}
 
-        {/* FASE 2: VÍDEO (Phase 2) */}
+        {/* FASE 2: VÍDEO */}
         {currentPhase >= 2 && (
           <div ref={videoSectionRef} className="revelation fade-in vsl-revelation">
             <div className="revelation-header">
@@ -312,21 +339,10 @@ export default function Result({ onNavigate }: ResultProps) {
             <div className="vsl-container">
               <div ref={videoSectionRef} className="vsl-placeholder"></div>
             </div>
-
-            {/* LOADING VISUAL ABAIXO DO VÍDEO */}
-            {currentPhase === 2 && (
-              <div className="loading-next-section fade-in">
-                <div className="spinner"></div>
-                <p>⏳ Preparando tu análisis de la Ventana de 72 Horas...</p>
-                <div className="loading-dots">
-                  <span>.</span><span>.</span><span>.</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* FASE 3: VENTANA 72H (Phase 3) */}
+        {/* FASE 3: VENTANA 72H */}
         {currentPhase >= 3 && (
           <div ref={ventana72SectionRef} className="revelation fade-in ventana-box-custom">
             <div className="ventana-header-custom">
@@ -347,97 +363,35 @@ export default function Result({ onNavigate }: ResultProps) {
               alt="Ventana 72h" 
               className="ventana-img"
             />
-
-            {/* LOADING DISCRETO ENTRE VENTANA E OFERTA */}
-            {currentPhase === 3 && (
-              <div className="loading-offer-hint fade-in">
-                🎯 Preparando tu oferta exclusiva...
-              </div>
-            )}
           </div>
         )}
 
-        {/* FASE 4: OFERTA COMPLETA (Phase 4) */}
+        {/* BOTÃO REVELAR OFERTA (Alteração #2) */}
+        {currentPhase >= 3 && !offerRevealed && (
+          <div className="manual-reveal-container">
+            <button onClick={revealOffer} className="btn-reveal-offer">🎯 QUIERO VER LA SOLUCIÓN AHORA</button>
+            <p>👆 Haz clic para acceder a la oferta exclusiva</p>
+          </div>
+        )}
+
+        {/* FASE 4: OFERTA (Alteração #3, #7, #8) */}
         {currentPhase >= 4 && (
           <div ref={offerSectionRef} className="revelation fade-in offer-section-custom">
             <div className="offer-badge">OFERTA EXCLUSIVA</div>
             <h2 className="offer-title-main">{getOfferTitle(gender)}</h2>
 
-            {/* BOX DE DADOS DO QUIZ */}
-            <div className="quiz-summary-box" style={{
-              background: 'rgba(234, 179, 8, 0.1)',
-              border: '2px solid rgba(234, 179, 8, 0.3)',
-              borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '30px'
-            }}>
-              <p style={{
-                fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
-                color: 'rgb(253, 224, 71)',
-                marginBottom: 'clamp(12px, 3vw, 16px)',
-                fontWeight: 'bold'
-              }}>
-                Basado en tu situación específica:
-              </p>
-              <ul style={{
-                listStyle: 'none',
-                padding: 0,
-                margin: 0,
-                fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
-                color: 'white',
-                lineHeight: '1.8'
-              }}>
-                <li>✓ <strong>Tiempo:</strong> {quizData.timeSeparation || 'No especificado'}</li>
-                <li>✓ <strong>Quién terminó:</strong> {quizData.whoEnded || 'No especificado'}</li>
-                <li>✓ <strong>Contacto:</strong> {quizData.currentSituation || 'No especificado'}</li>
-                <li>✓ <strong>Compromiso:</strong> {quizData.commitmentLevel || 'No especificado'}</li>
-              </ul>
-            </div>
-
-            {/* FEATURES COM CHECKMARKS */}
-            <div className="offer-features" style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'clamp(12px, 3vw, 16px)',
-              marginBottom: 'clamp(24px, 5vw, 32px)'
-            }}>
-              {getFeatures(gender).map((feature, index) => (
-                <div key={index} className="feature" style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 'clamp(10px, 3vw, 12px)',
-                  padding: 'clamp(8px, 2vw, 12px) 0'
-                }}>
-                  <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{
-                    minWidth: 'clamp(20px, 5vw, 24px)',
-                    width: 'clamp(20px, 5vw, 24px)',
-                    height: 'clamp(20px, 5vw, 24px)',
-                    marginTop: '2px',
-                    color: '#4ade80'
-                  }}>
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  <span style={{
-                    fontSize: 'clamp(0.9rem, 3.5vw, 1.125rem)',
-                    lineHeight: '1.5',
-                    flex: 1
-                  }}>{feature}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* PREÇO E DESCONTO */}
+            {/* PREÇO E DESCONTO (Alteração #7) */}
             <div className="price-box">
-              <p className="price-old">Precio regular: $67</p>
-              <p className="price-new">$9.90</p>
-              <p className="price-discount">💰 85% de descuento HOY</p>
+              <p className="price-old">Precio regular: R$ 297</p>
+              <p className="price-new">R$ 97</p>
+              <p className="price-discount">💰 67% de descuento HOY</p>
             </div>
 
             <button className="cta-buy-final" onClick={handleCTAClick}>
-              🎯 {getCTA(gender)}
+              🎯 ACCEDER AL MÉTODO COMPLETO AHORA
             </button>
 
-            {/* PROVA SOCIAL REAL */}
+            {/* PROVA SOCIAL REAL (Alteração #3) */}
             <div className="real-proof-box">
               <p>⭐ <strong>4.8/5 estrellas</strong> (2.341 avaliações verificadas)</p>
               <p>📱 Última compra hace 4 minutos</p>
@@ -449,7 +403,7 @@ export default function Result({ onNavigate }: ResultProps) {
               <span>↩️ 7 días de garantía</span>
             </div>
 
-            {/* URGÊNCIA COM JUSTIFICATIVA */}
+            {/* JUSTIFICATIVA DE SPOTS (Alteração #8) */}
             <div className="final-urgency-grid">
               <div className="urgency-item">
                 <span>Tiempo restante:</span>
@@ -461,48 +415,12 @@ export default function Result({ onNavigate }: ResultProps) {
                 <small>(Limitado para soporte personalizado)</small>
               </div>
             </div>
-
-            {/* GAMIFICAÇÃO: PESSOAS COMPRANDO */}
-            <p className="people-buying-counter" style={{
-              textAlign: 'center',
-              color: 'rgb(74, 222, 128)',
-              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
-              marginTop: 'clamp(16px, 4vw, 20px)',
-              marginBottom: 'clamp(12px, 3vw, 16px)',
-              lineHeight: '1.5',
-              fontWeight: '600'
-            }}>
-              ✨ {peopleBuying} personas están comprando ahora mismo
-            </p>
-
-            {/* PROVA SOCIAL +12.847 */}
-            <p className="social-proof-count" style={{
-              textAlign: 'center',
-              color: 'rgb(74, 222, 128)',
-              fontSize: 'clamp(0.875rem, 3.5vw, 1.125rem)',
-              marginBottom: 'clamp(12px, 3vw, 16px)',
-              lineHeight: '1.5',
-              fontWeight: '600'
-            }}>
-              ✓ +12.847 reconquistas exitosas
-            </p>
-
-            {/* EXCLUSIVIDADE */}
-            <p className="guarantee-text" style={{
-              textAlign: 'center',
-              fontSize: 'clamp(0.875rem, 3.5vw, 1rem)',
-              lineHeight: '1.6',
-              color: 'rgba(255, 255, 255, 0.9)',
-              padding: '0 8px'
-            }}>
-              Exclusivo para quien completó el análisis personalizado
-            </p>
           </div>
         )}
       </div>
 
-      {/* STICKY FOOTER */}
-      {currentPhase >= 4 && (
+      {/* STICKY FOOTER (Alteração #9) */}
+      {offerRevealed && (
         <div className="sticky-footer-urgency fade-in-up">
           ⏰ {formatTime(timeLeft)} • {spotsLeft} spots restantes
         </div>
@@ -516,6 +434,9 @@ export default function Result({ onNavigate }: ResultProps) {
           50% { transform: scale(1.02); box-shadow: 0 12px 48px rgba(234, 179, 8, 0.5); }
         }
         .loading-box-custom { background: rgba(234, 179, 8, 0.1); border: 2px solid #eab308; border-radius: 16px; padding: 40px; text-align: center; }
+        .quiz-summary-box { background: rgba(234, 179, 8, 0.1); border: 2px solid rgba(234, 179, 8, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 30px; }
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left; }
+        .summary-grid span { color: #4ade80; }
         .price-box { text-align: center; margin-bottom: 25px; }
         .price-old { text-decoration: line-through; opacity: 0.6; margin: 0; }
         .price-new { font-size: 3rem; color: #facc15; font-weight: 900; margin: 5px 0; }
@@ -523,6 +444,7 @@ export default function Result({ onNavigate }: ResultProps) {
         .cta-buy-final { width: 100%; background: #eab308; color: black; font-weight: 900; padding: 20px; border-radius: 12px; font-size: 1.5rem; border: 3px solid white; cursor: pointer; }
         .real-proof-box { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 15px; text-align: center; color: #4ade80; margin: 20px 0; }
         .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; }
+        .btn-reveal-offer { background: linear-gradient(135deg, #eab308, #facc15); color: black; font-weight: 900; font-size: 1.3rem; padding: 18px 30px; border-radius: 12px; border: 3px solid white; cursor: pointer; }
         .final-urgency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .urgency-item { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; text-align: center; }
         .urgency-item strong { display: block; font-size: 1.5rem; }
@@ -534,116 +456,6 @@ export default function Result({ onNavigate }: ResultProps) {
         .progress-step.completed .step-circle { background: #4ade80; color: white; }
         .ventana-img { width: 100%; max-width: 600px; border-radius: 12px; margin: 20px auto; display: block; }
         .emotional-validation { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 20px; margin-top: 20px; color: #4ade80; }
-        .fade-in { animation: fadeIn 0.6s ease-in-out; }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(100%); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* LOADING VISUAL ABAIXO DO VÍDEO */
-        .loading-next-section {
-          background: rgba(234, 179, 8, 0.1);
-          border: 2px solid #eab308;
-          padding: 30px;
-          border-radius: 12px;
-          margin-top: 20px;
-          text-align: center;
-          color: #facc15;
-          font-weight: bold;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 15px;
-        }
-        .loading-next-section .spinner {
-          border: 4px solid rgba(255, 255, 255, 0.3);
-          border-top: 4px solid #facc15;
-          border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          animation: spin 1s linear infinite;
-        }
-        .loading-next-section .loading-dots span {
-          opacity: 0;
-          animation: loadingDots 1.5s infinite;
-        }
-        .loading-next-section .loading-dots span:nth-child(1) { animation-delay: 0s; }
-        .loading-next-section .loading-dots span:nth-child(2) { animation-delay: 0.5s; }
-        .loading-next-section .loading-dots span:nth-child(3) { animation-delay: 1s; }
-
-        /* LOADING DISCRETO ENTRE VENTANA E OFERTA */
-        .loading-offer-hint {
-          background: rgba(0,0,0,0.3);
-          padding: 20px;
-          border-radius: 8px;
-          margin-top: 20px;
-          text-align: center;
-          color: rgb(253, 224, 71);
-          font-weight: bold;
-        }
-
-        /* ANIMAÇÕES GERAIS */
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        @keyframes loadingDots {
-          0%, 20% { opacity: 0; }
-          50% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        @keyframes pulse-active {
-          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
-          70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
-          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
-        }
-
-        /* ESTILOS RESPONSIVOS */
-        @media (max-width: 768px) {
-          .progress-bar-container {
-            flex-wrap: wrap;
-            padding: 10px;
-          }
-          .progress-step {
-            flex-basis: 50%; /* 2 colunas em mobile */
-            margin-bottom: 15px;
-          }
-          .progress-step:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: rgba(255, 255, 255, 0.2);
-            left: 50%;
-            top: 18px; /* Ajuste para alinhar com o centro do círculo */
-            z-index: 0;
-          }
-          .progress-step.completed:not(:last-child)::after {
-            background: rgb(74, 222, 128);
-          }
-          .progress-step:nth-child(even)::after {
-            display: none; /* Não conecta para a direita */
-          }
-          .progress-step:nth-child(odd)::after {
-            width: calc(100% + 10px); /* Ajuste para conectar entre colunas */
-            left: 50%;
-            transform: translateX(-50%);
-          }
-          .progress-step:nth-child(2)::after { /* Conecta o 2º ao 3º */
-            display: block;
-            width: calc(100% + 10px);
-            left: 50%;
-            transform: translateX(-50%);
-          }
-          .progress-step:nth-child(4)::after { /* O 4º não conecta */
-            display: none;
-          }
-        }
       `}</style>
     </div>
   );
