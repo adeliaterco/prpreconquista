@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'; // Adicionado useCallback
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { tracking } from '../utils/tracking';
 import { storage } from '../utils/storage';
 import { playKeySound, getHotmartUrl } from '../utils/animations';
@@ -23,18 +23,8 @@ interface ResultProps {
 
 export default function Result({ onNavigate }: ResultProps) {
     // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
-    // currentPhase: 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
+    // 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
     const [currentPhase, setCurrentPhase] = useState(0); 
-    // Tempo em milissegundos que o usuário está na fase atual
-    const [timeInCurrentPhase, setTimeInCurrentPhase] = useState(0); 
-    // Timestamp de quando a fase atual começou
-    const [phaseStartTime, setPhaseStartTime] = useState(Date.now()); 
-    // Delay dinâmico para o VSL em ms
-    const [vslUnlockDelay, setVslUnlockDelay] = useState(0); 
-    // Estado para controlar se o botão de VSL foi clicado
-    const [vslButtonClicked, setVslButtonClicked] = useState(false); 
-    // Estado para controlar se o VSL já foi injetado
-    const [vslInjected, setVslInjected] = useState(false); 
 
     // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
     const getInitialTime = () => {
@@ -55,6 +45,12 @@ export default function Result({ onNavigate }: ResultProps) {
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [loadingStep, setLoadingStep] = useState(0);
     const [peopleBuying, setPeopleBuying] = useState(Math.floor(Math.random() * 5) + 1);
+
+    // --- ESTADOS PARA O DELAY DO BOTÃO "REVELAR VENTANA DE 72 HORAS" ---
+    const DELAY_SECONDS = 50;
+    const [delayActive, setDelayActive] = useState(false);
+    const [delayTimeLeft, setDelayTimeLeft] = useState(DELAY_SECONDS);
+    const [currentEmoji, setCurrentEmoji] = useState('😴'); // Emoji inicial
 
     const quizData = storage.getQuizData();
     const diagnosticoSectionRef = useRef<HTMLDivElement>(null);
@@ -98,60 +94,17 @@ export default function Result({ onNavigate }: ResultProps) {
         return url.toString();
     };
 
-    // --- FUNÇÃO PARA AVANÇAR DE FASE (MANUAL OU AUTOMÁTICO) ---
-    const handleContinueClick = useCallback((nextPhase: number, triggeredBy: 'manual' | 'timeout') => {
-        const timeSpent = Date.now() - phaseStartTime; // Tempo gasto na fase atual
-        
-        // Envia evento GA4 de progressão de fase
-        ga4Tracking.phaseProgressionClicked(currentPhase, nextPhase, timeSpent);
-
-        // Se for um timeout, envia um evento de warning
-        if (triggeredBy === 'timeout') {
-            ga4Tracking.phaseTimeoutWarning(currentPhase, Math.round(timeSpent / 1000));
-        }
-
-        setCurrentPhase(nextPhase);
-        setPhaseStartTime(Date.now()); // Reseta o timer para a nova fase
-        setTimeInCurrentPhase(0); // Reseta o contador de tempo na fase
-        playKeySound(); // Toca som de transição
-        
-        // Tracking específico para cada fase
-        if (nextPhase === 1) {
-            tracking.revelationViewed('why_left');
-            ga4Tracking.revelationViewed('Por qué te dejó', 1);
-        } else if (nextPhase === 2) {
-            tracking.vslEvent('started');
-            ga4Tracking.videoStarted();
-        } else if (nextPhase === 3) {
-            tracking.revelationViewed('72h_window');
-            ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
-        } else if (nextPhase === 4) {
-            tracking.revelationViewed('offer');
-            ga4Tracking.revelationViewed('Oferta Revelada', 3);
-            ga4Tracking.offerRevealed();
-            // Envia evento GA4 quando a seção de oferta é alcançada
-            ga4Tracking.offerSectionReached(triggeredBy === 'manual' ? 'manual' : `timeout_phase${currentPhase}`, Date.now() - localStorage.getItem('quiz_timer_start') ? parseInt(localStorage.getItem('quiz_timer_start')!) : 0);
-        }
-    }, [currentPhase, phaseStartTime]); // Dependências para useCallback
-
-    // --- EFEITO PRINCIPAL DE INICIALIZAÇÃO E LOADING ---
+    // --- EFEITO PRINCIPAL DE PROGRESSÃO (SEM SCROLLS AUTOMÁTICOS) ---
     useEffect(() => {
         ensureUTMs();
         tracking.pageView('resultado');
         ga4Tracking.resultPageView();
-
-        // Inicia o timer de tempo na fase atual
-        const interval = setInterval(() => {
-            setTimeInCurrentPhase(prev => prev + 100);
-        }, 100);
 
         // Loading acelerado
         const progressInterval = setInterval(() => {
             setLoadingProgress(prev => {
                 if (prev >= 100) {
                     clearInterval(progressInterval);
-                    // Após o loading, avança para a Fase 1 (Diagnóstico)
-                    handleContinueClick(1, 'timeout'); // Considera como timeout para iniciar a primeira fase
                     return 100;
                 }
                 return prev + 4;
@@ -162,15 +115,14 @@ export default function Result({ onNavigate }: ResultProps) {
             setTimeout(() => setLoadingStep(index), step.duration);
         });
 
-        // Limpeza dos intervalos e timeouts
-        return () => {
-            clearInterval(interval);
-            clearInterval(progressInterval);
-        };
-    }, []); // Executa apenas uma vez na montagem
+        // Transição para Fase 1 (Diagnóstico) após loading
+        const timerPhase1 = setTimeout(() => {
+            setCurrentPhase(1);
+            playKeySound();
+            tracking.revelationViewed('why_left');
+            ga4Tracking.revelationViewed('Por qué te dejó', 1);
+        }, 2500); // Tempo para o loading inicial
 
-    // --- EFEITO PARA TIMERS DE URGÊNCIA (COUNTDOWN, SPOTS, PEOPLE BUYING) ---
-    useEffect(() => {
         const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
 
         const spotsInterval = setInterval(() => {
@@ -196,77 +148,59 @@ export default function Result({ onNavigate }: ResultProps) {
         }, Math.floor(Math.random() * 10000) + 5000);
 
         return () => {
+            clearInterval(progressInterval);
+            clearTimeout(timerPhase1);
             clearInterval(countdownInterval);
             clearInterval(spotsInterval);
             clearInterval(buyingInterval);
         };
-    }, []); // Executa apenas uma vez na montagem
+    }, []);
 
-    // --- EFEITO PARA LÓGICA DE PROGRESSÃO HÍBRIDA (FALLBACK AUTOMÁTICO) ---
+    // --- EFEITO PARA O DELAY DO BOTÃO "REVELAR VENTANA DE 72 HORAS" ---
     useEffect(() => {
-        let fallbackTimer: NodeJS.Timeout;
-        const FALLBACK_TIMEOUT_MS = 15000; // 15 segundos para fases gerais
-        const VSL_FALLBACK_TIMEOUT_MS = 20000; // 20 segundos para a fase do vídeo
+        if (delayActive && delayTimeLeft > 0) {
+            const delayTimer = setInterval(() => {
+                setDelayTimeLeft(prev => {
+                    const newTime = prev - 1;
+                    const progress = (1 - newTime / DELAY_SECONDS) * 100;
+                    if (progress < 25) setCurrentEmoji('😴');
+                    else if (progress < 50) setCurrentEmoji('⏳');
+                    else if (progress < 75) setCurrentEmoji('🔥');
+                    else setCurrentEmoji('🚀');
 
-        if (currentPhase === 1) { // Diagnóstico
-            fallbackTimer = setTimeout(() => {
-                handleContinueClick(2, 'timeout');
-            }, FALLBACK_TIMEOUT_MS);
-        } else if (currentPhase === 2 && !vslButtonClicked) { // Vídeo, mas botão de VSL não clicado
-            // Se o botão do VSL não foi clicado, o fallback avança para a próxima fase
-            fallbackTimer = setTimeout(() => {
-                handleContinueClick(3, 'timeout');
-            }, VSL_FALLBACK_TIMEOUT_MS);
-        } else if (currentPhase === 3) { // Ventana 72h
-            fallbackTimer = setTimeout(() => {
-                handleContinueClick(4, 'timeout');
-            }, FALLBACK_TIMEOUT_MS);
-        }
-
-        return () => {
-            if (fallbackTimer) clearTimeout(fallbackTimer);
-        };
-    }, [currentPhase, handleContinueClick, vslButtonClicked]); // Depende de currentPhase e se o botão do VSL foi clicado
-
-    // --- EFEITO PARA CALCULAR DELAY DINÂMICO DO VSL ---
-    useEffect(() => {
-        if (currentPhase === 2) {
-            const timeInPhase1 = Date.now() - phaseStartTime; // Tempo gasto na Fase 1
-            // Lógica de delay dinâmico: 3s, 5s, 8s
-            const calculatedDelay = timeInPhase1 < 10000 ? 3000 : // Menos de 10s na fase 1 -> 3s de delay
-                                    timeInPhase1 < 30000 ? 5000 : // Entre 10s e 30s na fase 1 -> 5s de delay
-                                    8000; // Mais de 30s na fase 1 -> 8s de delay
-            setVslUnlockDelay(calculatedDelay);
-        }
-    }, [currentPhase, phaseStartTime]); // Recalcula quando a fase muda para 2 ou phaseStartTime muda
-
-    // --- INJEÇÃO VTURB (VSL) COM DELAY DINÂMICO ---
-    useEffect(() => {
-        // Só injeta o VSL se estiver na fase 2, o botão de VSL foi clicado e ainda não foi injetado
-        if (currentPhase === 2 && vslButtonClicked && !vslInjected && videoSectionRef.current) {
-            const timer = setTimeout(() => {
-                const vslPlaceholder = videoSectionRef.current.querySelector('.vsl-placeholder');
-                if (vslPlaceholder) {
-                    vslPlaceholder.innerHTML = `
-                        <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
-                            <vturb-smartplayer id="vid-6946ae0a8fd5231b631d81f0" style="display: block; margin: 0 auto; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></vturb-smartplayer>
-                        </div>
-                    `;
-                    if (!document.querySelector('script[src*="player.js"]')) {
-                        const s = document.createElement("script");
-                        s.src = "https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/6946ae0a8fd5231b631d81f0/v4/player.js";
-                        s.async = true;
-                        document.head.appendChild(s);
+                    if (newTime <= 0) {
+                        clearInterval(delayTimer);
+                        setDelayActive(false); // Desativa o delay
+                        return 0;
                     }
-                    setVslInjected(true); // Marca que o VSL foi injetado
-                    // Envia evento GA4 quando o vídeo é finalmente exibido
-                    ga4Tracking.videoUnlockedViewed(0, vslUnlockDelay); // Duração do vídeo pode ser 0 ou obtida via API do VTurb
-                }
-            }, vslUnlockDelay); // Usa o delay dinâmico
-
-            return () => clearTimeout(timer);
+                    return newTime;
+                });
+            }, 1000);
+            return () => clearInterval(delayTimer);
         }
-    }, [currentPhase, vslButtonClicked, vslInjected, vslUnlockDelay]); // Depende do estado do VSL e do delay
+    }, [delayActive, delayTimeLeft]);
+
+    // Injeção VTurb
+    useEffect(() => {
+        if (currentPhase !== 2 || !videoSectionRef.current) return;
+        const timer = setTimeout(() => {
+            const vslPlaceholder = videoSectionRef.current.querySelector('.vsl-placeholder');
+            if (vslPlaceholder) {
+                vslPlaceholder.innerHTML = `
+                    <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
+                        <vturb-smartplayer id="vid-6946ae0a8fd5231b631d81f0" style="display: block; margin: 0 auto; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></vturb-smartplayer>
+                    </div>
+                `;
+                if (!document.querySelector('script[src*="player.js"]')) {
+                    const s = document.createElement("script");
+                    s.src = "https://scripts.converteai.net/ea3c2dc1-1976-40a2-b0fb-c5055f82bfaf/players/6946ae0a8fd5231b631d81f0/v4/player.js";
+                    s.async = true;
+                    document.head.appendChild(s);
+                }
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [currentPhase]);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -274,20 +208,46 @@ export default function Result({ onNavigate }: ResultProps) {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleCTAClick = () => {
+    const handleCTAClick = useCallback(() => {
         tracking.ctaClicked('result_buy');
         ga4Tracking.ctaBuyClicked('result_buy_main');
         window.open(appendUTMsToHotmartURL(), '_blank');
-    };
+    }, []);
 
-    // Handler para o clique no botão "Desbloquear Vídeo"
-    const handleUnlockVideoButtonClick = () => {
-        setVslButtonClicked(true); // Marca que o botão foi clicado
-        const timeToClick = Date.now() - phaseStartTime; // Tempo desde o início da fase 2
-        ga4Tracking.videoButtonUnlocked(timeToClick, 'VSL Plan Personalizado');
-    };
+    const handleButtonClick = useCallback((nextPhase: number, eventName: string, eventParams?: Record<string, any>) => {
+        playKeySound();
+        ga4Tracking.phaseProgressionClicked(currentPhase, nextPhase, eventName, eventParams);
+        setCurrentPhase(nextPhase);
+        if (nextPhase === 3) { // Ativa o delay para o botão da Ventana 72h
+            setDelayActive(true);
+            setDelayTimeLeft(DELAY_SECONDS);
+            ga4Tracking.videoButtonUnlocked('Revelar Ventana 72h', DELAY_SECONDS);
+        } else if (nextPhase === 4) {
+            ga4Tracking.ventana72Revealed();
+        }
+    }, [currentPhase]);
 
     const phases = ['Diagnóstico', 'Vídeo', 'Ventana 72h', 'Solución'];
+
+    // --- FUNÇÃO PARA RENDERIZAR BOTÕES DE CTA ---
+    const renderActionButton = (
+        buttonText: string,
+        onClick: () => void,
+        colorClass: string,
+        sizeClass: string,
+        animationClass: string,
+        disabled: boolean = false,
+        subText?: string
+    ) => (
+        <button
+            className={`cta-button ${colorClass} ${sizeClass} ${animationClass}`}
+            onClick={onClick}
+            disabled={disabled}
+        >
+            {buttonText}
+            {subText && <span className="cta-subtext">{subText}</span>}
+        </button>
+    );
 
     return (
         <div className="result-container">
@@ -359,15 +319,20 @@ export default function Result({ onNavigate }: ResultProps) {
                         <div className="emotional-validation">
                             <p><strong>Tu situación específica:</strong><br />{getEmotionalValidation(quizData)}</p>
                         </div>
+                    </div>
+                )}
 
-                        {/* BOTÃO "CONTINUAR" PARA FASE 1 */}
-                        {currentPhase === 1 && (
-                            <button 
-                                className="continue-button pulse" 
-                                onClick={() => handleContinueClick(2, 'manual')}
-                            >
-                                CONTINUAR <span className="arrow">→</span>
-                            </button>
+                {/* CTA 1: ABAIXO DO DIAGNÓSTICO */}
+                {currentPhase === 1 && (
+                    <div className="cta-wrapper fade-in">
+                        {renderActionButton(
+                            'Desbloquear El Vídeo Secreto 🔓',
+                            () => handleButtonClick(2, 'video_unlocked_button_clicked'),
+                            'btn-green',
+                            'btn-size-1',
+                            'btn-animation-fadein',
+                            false,
+                            '(Las 3 fases en 72 horas)'
                         )}
                     </div>
                 )}
@@ -380,35 +345,45 @@ export default function Result({ onNavigate }: ResultProps) {
                             <h2>Cómo Reactivar Los Interruptores Emocionales En 72 Horas</h2>
                         </div>
                         <div className="vsl-container">
-                            {/* Placeholder para o VSL ou botão de desbloqueio */}
-                            {!vslButtonClicked && (
-                                <div className="vsl-unlock-overlay">
-                                    <button 
-                                        className="unlock-vsl-button pulse" 
-                                        onClick={handleUnlockVideoButtonClick}
-                                    >
-                                        DESBLOQUEAR VÍDEO <span className="arrow">→</span>
-                                    </button>
-                                    <p className="unlock-vsl-info">Haz clic para revelar el secreto de las 72 horas</p>
-                                </div>
-                            )}
-                            {vslButtonClicked && !vslInjected && (
-                                <div className="vsl-loading-spinner">
-                                    <div className="spinner"></div>
-                                    <p>Cargando vídeo...</p>
-                                </div>
-                            )}
                             <div className="vsl-placeholder"></div> 
                         </div>
+                    </div>
+                )}
 
-                        {/* BOTÃO "CONTINUAR" PARA FASE 2 */}
-                        {currentPhase === 2 && vslInjected && ( // Só mostra o botão se o VSL já foi injetado
-                            <button 
-                                className="continue-button pulse" 
-                                onClick={() => handleContinueClick(3, 'manual')}
-                            >
-                                CONTINUAR <span className="arrow">→</span>
-                            </button>
+                {/* CTA 2: ABAIXO DO VÍDEO (COM DELAY E INDICADOR) */}
+                {currentPhase === 2 && (
+                    <div className="cta-wrapper fade-in">
+                        {delayActive ? (
+                            <div className="delay-indicator-box">
+                                <div className="delay-progress-bar-container">
+                                    <div 
+                                        className="delay-progress-bar" 
+                                        style={{ width: `${(1 - delayTimeLeft / DELAY_SECONDS) * 100}%` }}
+                                    ></div>
+                                </div>
+                                <p className="delay-text">
+                                    {currentEmoji} Próxima sección en {delayTimeLeft}s...
+                                </p>
+                                <p className="delay-subtext">
+                                    ✨ Preparando: LA VENTANA DE 72 HORAS ✨
+                                </p>
+                                {renderActionButton(
+                                    'Revelar VENTANA DE 72 HORAS',
+                                    () => handleButtonClick(3, 'ventana72_revealed_button_clicked'),
+                                    'btn-yellow',
+                                    'btn-size-2',
+                                    'btn-animation-bounce',
+                                    true // Desabilitado durante o delay
+                                )}
+                            </div>
+                        ) : (
+                            renderActionButton(
+                                'Revelar VENTANA DE 72 HORAS',
+                                () => handleButtonClick(3, 'ventana72_revealed_button_clicked'),
+                                'btn-yellow',
+                                'btn-size-2',
+                                'btn-animation-bounce'
+                            )
                         )}
                     </div>
                 )}
@@ -434,15 +409,20 @@ export default function Result({ onNavigate }: ResultProps) {
                             alt="Ventana 72h" 
                             className="ventana-img"
                         />
+                    </div>
+                )}
 
-                        {/* BOTÃO "CONTINUAR" PARA FASE 3 */}
-                        {currentPhase === 3 && (
-                            <button 
-                                className="continue-button pulse" 
-                                onClick={() => handleContinueClick(4, 'manual')}
-                            >
-                                CONTINUAR <span className="arrow">→</span>
-                            </button>
+                {/* CTA 3: ABAIXO DA VENTANA 72H */}
+                {currentPhase === 3 && (
+                    <div className="cta-wrapper fade-in">
+                        {renderActionButton(
+                            'Revelar Mi Plan Personalizado ⚡',
+                            () => handleButtonClick(4, 'offer_plan_revealed_button_clicked'),
+                            'btn-orange',
+                            'btn-size-3',
+                            'btn-animation-pulse',
+                            false,
+                            '(Tu estrategia de reconquista)'
                         )}
                     </div>
                 )}
@@ -523,9 +503,16 @@ export default function Result({ onNavigate }: ResultProps) {
                             <p className="price-discount">💰 85% de descuento HOY</p>
                         </div>
 
-                        <button className="cta-buy-final" onClick={handleCTAClick}>
-                            🎯 {getCTA(gender)}
-                        </button>
+                        {/* CTA 4: BOTÃO FINAL DE COMPRA */}
+                        {renderActionButton(
+                            '🚀 SÍ, QUIERO MI RECONQUISTA GARANTIZADA 🚀',
+                            handleCTAClick,
+                            'btn-green',
+                            'btn-size-4',
+                            'btn-animation-glowshake',
+                            false,
+                            '(30 días o tu dinero de vuelta)'
+                        )}
 
                         {/* PROVA SOCIAL REAL */}
                         <div className="real-proof-box">
@@ -614,7 +601,72 @@ export default function Result({ onNavigate }: ResultProps) {
                 .price-old { text-decoration: line-through; opacity: 0.6; margin: 0; }
                 .price-new { font-size: 3rem; color: #facc15; font-weight: 900; margin: 5px 0; }
                 .price-discount { color: #4ade80; font-weight: bold; }
-                .cta-buy-final { width: 100%; background: #eab308; color: black; font-weight: 900; padding: 20px; border-radius: 12px; font-size: 1.5rem; border: 3px solid white; cursor: pointer; }
+                
+                /* CTA BUTTONS */
+                .cta-wrapper { margin: 30px auto; max-width: 600px; text-align: center; }
+                .cta-button { 
+                    width: 100%; 
+                    font-weight: 900; 
+                    padding: 20px; 
+                    border-radius: 12px; 
+                    border: 3px solid white; 
+                    cursor: pointer; 
+                    transition: all 0.3s ease;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    line-height: 1.2;
+                }
+                .cta-button:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                    border-color: rgba(255,255,255,0.3);
+                }
+                .cta-subtext {
+                    font-size: 0.8em;
+                    font-weight: 500;
+                    opacity: 0.8;
+                    margin-top: 5px;
+                }
+
+                /* Button Colors */
+                .btn-green { background: #10b981; color: black; }
+                .btn-green:hover:not(:disabled) { background: #059669; }
+                .btn-yellow { background: #eab308; color: black; }
+                .btn-yellow:hover:not(:disabled) { background: #ca8a04; }
+                .btn-orange { background: #f97316; color: black; }
+                .btn-orange:hover:not(:disabled) { background: #ea580c; }
+                .btn-red { background: #ef4444; color: black; } /* Not used in final plan, but kept for reference */
+                .btn-red:hover:not(:disabled) { background: #dc2626; }
+
+                /* Button Sizes */
+                .btn-size-1 { font-size: 16px; }
+                .btn-size-2 { font-size: 18px; }
+                .btn-size-3 { font-size: 20px; }
+                .btn-size-4 { font-size: 24px; }
+
+                /* Button Animations */
+                .btn-animation-fadein { animation: fadeIn 0.6s ease-in-out; }
+                .btn-animation-bounce { animation: bounce 0.8s infinite alternate; }
+                @keyframes bounce {
+                    0% { transform: translateY(0); }
+                    100% { transform: translateY(-5px); }
+                }
+                .btn-animation-pulse { animation: pulse 1.5s infinite; }
+                @keyframes pulse {
+                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); }
+                    70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(249, 115, 22, 0); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+                }
+                .btn-animation-glowshake { animation: glowShake 1.5s infinite; }
+                @keyframes glowShake {
+                    0%, 100% { transform: translateX(0) scale(1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); }
+                    25% { transform: translateX(-2px) scale(1.01); box-shadow: 0 0 20px rgba(16, 185, 129, 1); }
+                    50% { transform: translateX(2px) scale(1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); }
+                    75% { transform: translateX(-2px) scale(1.01); box-shadow: 0 0 20px rgba(16, 185, 129, 1); }
+                }
+
                 .real-proof-box { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 15px; text-align: center; color: #4ade80; margin: 20px 0; }
                 .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; }
                 
@@ -644,6 +696,43 @@ export default function Result({ onNavigate }: ResultProps) {
                 .ventana-img { width: 100%; max-width: 600px; border-radius: 12px; margin: 20px auto; display: block; }
                 .emotional-validation { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 20px; margin-top: 20px; color: #4ade80; }
 
+                /* Delay Indicator Styles */
+                .delay-indicator-box {
+                    background: rgba(234, 179, 8, 0.1);
+                    border: 2px solid #eab308;
+                    border-radius: 12px;
+                    padding: 20px;
+                    text-align: center;
+                    margin-top: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
+                    align-items: center;
+                }
+                .delay-progress-bar-container {
+                    width: 80%;
+                    height: 10px;
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 5px;
+                    overflow: hidden;
+                }
+                .delay-progress-bar {
+                    height: 100%;
+                    background: #eab308;
+                    transition: width 1s linear;
+                }
+                .delay-text {
+                    font-size: 1.2rem;
+                    font-weight: bold;
+                    color: white;
+                    margin: 0;
+                }
+                .delay-subtext {
+                    font-size: 0.9rem;
+                    color: rgba(255, 255, 255, 0.8);
+                    margin: 0;
+                }
+
                 @keyframes spin {
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
@@ -663,130 +752,6 @@ export default function Result({ onNavigate }: ResultProps) {
                 @keyframes fadeInUp {
                     from { opacity: 0; transform: translateY(100%); }
                     to { opacity: 1; transform: translateY(0); }
-                }
-
-                /* Estilos para o botão "Continuar" */
-                .continue-button {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 100%;
-                    max-width: 400px;
-                    margin: 30px auto 0;
-                    padding: 18px 25px;
-                    background: linear-gradient(90deg, #eab308 0%, #facc15 100%);
-                    color: black;
-                    font-size: 1.4rem;
-                    font-weight: 900;
-                    border: none;
-                    border-radius: 12px;
-                    cursor: pointer;
-                    box-shadow: 0 8px 20px rgba(234, 179, 8, 0.4);
-                    transition: all 0.3s ease;
-                }
-                .continue-button:hover {
-                    transform: translateY(-3px);
-                    box-shadow: 0 12px 25px rgba(234, 179, 8, 0.6);
-                }
-                .continue-button .arrow {
-                    margin-left: 10px;
-                    font-size: 1.8rem;
-                    line-height: 1;
-                }
-                .pulse {
-                    animation: pulse 1.5s infinite;
-                }
-                @keyframes pulse {
-                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); }
-                    70% { transform: scale(1.02); box-shadow: 0 0 0 15px rgba(234, 179, 8, 0); }
-                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
-                }
-
-                /* Estilos para o overlay e botão de desbloqueio do VSL */
-                .vsl-unlock-overlay {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.9);
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 8px;
-                    z-index: 10;
-                    text-align: center;
-                }
-                .unlock-vsl-button {
-                    background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
-                    color: black;
-                    font-size: 1.5rem;
-                    font-weight: 900;
-                    padding: 20px 30px;
-                    border: none;
-                    border-radius: 12px;
-                    cursor: pointer;
-                    box-shadow: 0 8px 20px rgba(74, 222, 128, 0.4);
-                    transition: all 0.3s ease;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .unlock-vsl-button:hover {
-                    transform: translateY(-3px);
-                    box-shadow: 0 12px 25px rgba(74, 222, 128, 0.6);
-                }
-                .unlock-vsl-button .arrow {
-                    margin-left: 10px;
-                    font-size: 1.8rem;
-                    line-height: 1;
-                }
-                .unlock-vsl-info {
-                    color: rgba(255, 255, 255, 0.8);
-                    margin-top: 15px;
-                    font-size: 1rem;
-                }
-                .vsl-loading-spinner {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.9);
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 8px;
-                    z-index: 10;
-                    color: white;
-                    font-size: 1.2rem;
-                }
-                .vsl-loading-spinner .spinner {
-                    border: 4px solid rgba(255, 255, 255, 0.3);
-                    border-top: 4px solid #4ade80;
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    animation: spin 1s linear infinite;
-                    margin-bottom: 15px;
-                }
-                .vsl-container {
-                    position: relative; /* Necessário para o overlay */
-                    padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-                    height: 0;
-                    overflow: hidden;
-                    max-width: 100%;
-                    background: #000;
-                    border-radius: 8px;
-                }
-                .vsl-container .vsl-placeholder {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
                 }
             `}</style>
         </div>
