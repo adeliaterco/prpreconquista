@@ -12,7 +12,7 @@ import {
     getVentana72Copy,
     getOfferTitle,
     getFeatures, 
-    getCTA,
+    getCTA, // Keep getCTA for other uses if any, but hardcode final CTA
     getFaseText
 } from '../utils/contentByGender';
 import { getEmotionalValidation } from '../utils/emotionalValidation';
@@ -32,9 +32,9 @@ export default function Result({ onNavigate }: ResultProps) {
 
     // --- ESTADO PARA OS CHECKMARKS DOS BOTÕES ---
     const [buttonCheckmarks, setButtonCheckmarks] = useState<{[key: number]: boolean}>({
-        0: false,
-        1: false,
-        2: false
+        0: false, // For button after Diagnóstico (Phase 1)
+        1: false, // For button after Video (Phase 2)
+        2: false  // For button after Ventana (Phase 3)
     });
 
     // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
@@ -206,6 +206,24 @@ export default function Result({ onNavigate }: ResultProps) {
         return () => clearTimeout(timer);
     }, [currentPhase]);
 
+    // --- EFEITO PARA SCROLL AUTOMÁTICO ---
+    useEffect(() => {
+        let targetRef: React.RefObject<HTMLDivElement> | null = null;
+        switch (currentPhase) {
+            case 1: targetRef = diagnosticoSectionRef; break;
+            case 2: targetRef = videoSectionRef; break;
+            case 3: targetRef = ventana72SectionRef; break;
+            case 4: targetRef = offerSectionRef; break;
+        }
+
+        if (targetRef && targetRef.current) {
+            // Adiciona um pequeno delay para garantir que a seção já está montada e visível
+            setTimeout(() => {
+                targetRef!.current!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100); 
+        }
+    }, [currentPhase]);
+
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -215,49 +233,49 @@ export default function Result({ onNavigate }: ResultProps) {
     // --- HANDLERS DE CLIQUE DOS BOTÕES COM TRANSIÇÃO ---
     const handlePhase1ButtonClick = () => {
         playKeySound();
-        setButtonCheckmarks(prev => ({ ...prev, 0: true }));
-        setFadeOutPhase(1);
+        setButtonCheckmarks(prev => ({ ...prev, 0: true })); // Show checkmark for button 0
+        setFadeOutPhase(1); // Start fading out current section (Diagnóstico)
 
         setTimeout(() => {
-            setCurrentPhase(2);
+            setCurrentPhase(2); // Advance to next phase (Video)
             ga4Tracking.phaseProgressionClicked({ phase_from: 1, phase_to: 2, button_name: 'Desbloquear El Vídeo Secreto' });
             tracking.vslEvent('started');
             ga4Tracking.videoStarted();
-            setFadeOutPhase(null);
-            setButtonCheckmarks(prev => ({ ...prev, 0: false }));
-        }, 1300);
+            setFadeOutPhase(null); // Clear fade out state
+            // buttonCheckmarks[0] remains true, but section 1 is unmounted
+        }, 1300); // 0.3s fade-out + 1s for checkmark animation/display
     };
 
     const handlePhase2ButtonClick = () => {
         if (!isVideoButtonEnabled) return;
         playKeySound();
-        setButtonCheckmarks(prev => ({ ...prev, 1: true }));
-        setFadeOutPhase(2);
+        setButtonCheckmarks(prev => ({ ...prev, 1: true })); // Show checkmark for button 1
+        setFadeOutPhase(2); // Start fading out current section (Video)
 
         setTimeout(() => {
-            setCurrentPhase(3);
+            setCurrentPhase(3); // Advance to next phase (Ventana 72h)
             ga4Tracking.phaseProgressionClicked({ phase_from: 2, phase_to: 3, button_name: 'Revelar VENTANA DE 72 HORAS' });
             tracking.revelationViewed('72h_window');
             ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
-            setFadeOutPhase(null);
-            setButtonCheckmarks(prev => ({ ...prev, 1: false }));
-        }, 1300);
+            setFadeOutPhase(null); // Clear fade out state
+            // buttonCheckmarks[1] remains true, but section 2 is unmounted
+        }, 1300); // 0.3s fade-out + 1s for checkmark animation/display
     };
 
     const handlePhase3ButtonClick = () => {
         playKeySound();
-        setButtonCheckmarks(prev => ({ ...prev, 2: true }));
-        setFadeOutPhase(3);
+        setButtonCheckmarks(prev => ({ ...prev, 2: true })); // Show checkmark for button 2
+        setFadeOutPhase(3); // Start fading out current section (Ventana 72h)
 
         setTimeout(() => {
-            setCurrentPhase(4);
+            setCurrentPhase(4); // Advance to next phase (Oferta)
             ga4Tracking.phaseProgressionClicked({ phase_from: 3, phase_to: 4, button_name: 'Revelar Mi Plan Personalizado' });
             tracking.revelationViewed('offer');
             ga4Tracking.revelationViewed('Oferta Revelada', 3);
             ga4Tracking.offerRevealed();
-            setFadeOutPhase(null);
-            setButtonCheckmarks(prev => ({ ...prev, 2: false }));
-        }, 1300);
+            setFadeOutPhase(null); // Clear fade out state
+            // buttonCheckmarks[2] remains true, but section 3 is unmounted
+        }, 1300); // 0.3s fade-out + 1s for checkmark animation/display
     };
 
     const handleCTAClick = () => {
@@ -290,7 +308,7 @@ export default function Result({ onNavigate }: ResultProps) {
                 </p>
             </div>
 
-            {/* BARRA DE PROGRESO UNIFICADA */}
+            {/* BARRA DE PROGRESSO UNIFICADA */}
             {currentPhase > 0 && (
                 <div className="progress-bar-container fade-in">
                     {phases.map((label, index) => (
@@ -325,10 +343,10 @@ export default function Result({ onNavigate }: ResultProps) {
                 )}
 
                 {/* FASE 1: DIAGNÓSTICO */}
-                {currentPhase >= 1 && (
+                {currentPhase === 1 && ( // Render only if currentPhase is 1
                     <div 
                         ref={diagnosticoSectionRef} 
-                        className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''} ${fadeOutPhase === 1 ? 'fade-out' : ''}`}
+                        className={`revelation fade-in ${fadeOutPhase === 1 ? 'fade-out' : ''}`}
                     >
                         <div className="revelation-header">
                             <div className="revelation-icon">💔</div>
@@ -368,7 +386,7 @@ export default function Result({ onNavigate }: ResultProps) {
                 )}
 
                 {/* FASE 2: VÍDEO */}
-                {currentPhase >= 2 && (
+                {currentPhase === 2 && ( // Render only if currentPhase is 2
                     <div 
                         ref={videoSectionRef} 
                         className={`revelation fade-in vsl-revelation ${fadeOutPhase === 2 ? 'fade-out' : ''}`}
@@ -420,7 +438,7 @@ export default function Result({ onNavigate }: ResultProps) {
                 )}
 
                 {/* FASE 3: VENTANA 72H */}
-                {currentPhase >= 3 && (
+                {currentPhase === 3 && ( // Render only if currentPhase is 3
                     <div 
                         ref={ventana72SectionRef} 
                         className={`revelation fade-in ventana-box-custom ${fadeOutPhase === 3 ? 'fade-out' : ''}`}
@@ -461,7 +479,7 @@ export default function Result({ onNavigate }: ResultProps) {
                 )}
 
                 {/* FASE 4: OFERTA (OTIMIZADA) */}
-                {currentPhase >= 4 && (
+                {currentPhase >= 4 && ( // Render if currentPhase is 4 or greater (final phase)
                     <div ref={offerSectionRef} className="revelation fade-in offer-section-custom">
                         <div className="offer-badge">OFERTA EXCLUSIVA</div>
                         <h2 className="offer-title-main">{getOfferTitle(gender)}</h2>
@@ -538,7 +556,7 @@ export default function Result({ onNavigate }: ResultProps) {
 
                         {/* BOTÃO 4: CTA FINAL */}
                         <button className="cta-button btn-green btn-size-4 btn-animation-glowshake" onClick={handleCTAClick}>
-                            🚀 {getCTA(gender)} 🚀
+                            🚀 SÍ, QUIERO MI RECONQUISTA GARANTIZADA 🚀
                         </button>
 
                         {/* PROVA SOCIAL REAL */}
@@ -697,7 +715,7 @@ export default function Result({ onNavigate }: ResultProps) {
                     justify-content: center;
                     align-items: center;
                     margin-top: 20px;
-                    min-height: 80px;
+                    min-height: 80px; /* Ensure space for checkmark */
                 }
                 .checkmark-glow {
                     font-size: 4rem;
