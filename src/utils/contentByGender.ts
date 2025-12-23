@@ -1,8 +1,8 @@
 import { QuizData } from '../types/quiz';
 
-// ========================================
+// 
 // FUNÇÕES DE PERSONALIZAÇÃO POR GÊNERO
-// ========================================
+// 
 
 export function getTitle(gender: string): string {
     return gender === 'HOMBRE' 
@@ -18,7 +18,7 @@ export function getLoadingMessage(gender: string): string {
 
 /**
  * ALTERAÇÃO #6: Diagnóstico Ultra-Personalizado
- * Transforma os dados do quiz em uma narrativa de autoridade e empatia.
+ * Transforma os dados do quiz em una narrativa de autoridade e empatia.
  */
 export function getCopy(quizData: QuizData): string {
     const pronoun = quizData.gender === 'HOMBRE' ? 'ella' : 'él';
@@ -29,9 +29,9 @@ export function getCopy(quizData: QuizData): string {
     const currentSituation = quizData.currentSituation || '';
     const reason = quizData.reason || '';
 
-    // ========================================
+    // 
     // 1. LÓGICA DE INTRODUÇÃO (QUEM TERMINOU) - CORRIGIDA
-    // ========================================
+    // 
     let intro = '';
     
     // Caso 1: ELA/ELE TERMINOU
@@ -51,9 +51,9 @@ export function getCopy(quizData: QuizData): string {
         intro = `Considerando el contexto de la ruptura, el desafío ahora es comprender las dinámicas emocionales que llevaron a este punto y revertirlas estratégicamente. `;
     }
 
-    // ========================================
+    // 
     // 2. LÓGICA DE URGÊNCIA (TEMPO DE SEPARAÇÃO) - MELHORADA
-    // ========================================
+    // 
     let urgency = '';
     if (timeSeparation.includes('MENOS DE 1 SEMANA') || timeSeparation.includes('1-4 SEMANAS')) {
         urgency = `Estás en la **ventana de tiempo IDEAL**. El cerebro de ${pronoun} aún tiene rastros químicos de tu presencia, lo que facilita la reconexión si actúas ahora. `;
@@ -63,9 +63,9 @@ export function getCopy(quizData: QuizData): string {
         urgency = `Aunque ha pasado tiempo (${timeSeparation}), la neurociencia explica que las memorias emocionales pueden ser reactivadas mediante los estímulos correctos. `;
     }
 
-    // ========================================
+    // 
     // 3. LÓGICA DE CONTATO (SITUAÇÃO ATUAL) - MELHORADA
-    // ========================================
+    // 
     let insight = '';
     if (currentSituation.includes('CONTACTO CERO') || currentSituation.includes('ME IGNORA') || currentSituation.includes('BLOQUEADO')) {
         insight = `El hecho de que no haya contacto es, irónicamente, tu mayor ventaja. Estamos en la fase de "limpieza de picos de cortisol", preparando el terreno para un regreso impactante. `;
