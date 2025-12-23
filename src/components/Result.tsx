@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { tracking } from '../utils/tracking';
 import { storage } from '../utils/storage';
 import { playKeySound, getHotmartUrl } from '../utils/animations';
@@ -23,8 +23,11 @@ interface ResultProps {
 
 export default function Result({ onNavigate }: ResultProps) {
     // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
-    // 0: Loading, 1: Diagnosis, 2: Video, 3: Ventana, 4: Offer
-    const [currentPhase, setCurrentPhase] = useState(0); 
+    const [currentPhase, setCurrentPhase] = useState(0);
+
+    // --- ESTADOS PARA O DELAY DO BOTÃO DO VÍDEO ---
+    const [videoButtonDelayLeft, setVideoButtonDelayLeft] = useState(50);
+    const [isVideoButtonEnabled, setIsVideoButtonEnabled] = useState(false);
 
     // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
     const getInitialTime = () => {
@@ -45,12 +48,6 @@ export default function Result({ onNavigate }: ResultProps) {
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [loadingStep, setLoadingStep] = useState(0);
     const [peopleBuying, setPeopleBuying] = useState(Math.floor(Math.random() * 5) + 1);
-
-    // --- ESTADOS PARA O DELAY DO BOTÃO "REVELAR VENTANA DE 72 HORAS" ---
-    const DELAY_SECONDS = 50;
-    const [delayActive, setDelayActive] = useState(false);
-    const [delayTimeLeft, setDelayTimeLeft] = useState(DELAY_SECONDS);
-    const [currentEmoji, setCurrentEmoji] = useState('😴'); // Emoji inicial
 
     const quizData = storage.getQuizData();
     const diagnosticoSectionRef = useRef<HTMLDivElement>(null);
@@ -94,13 +91,12 @@ export default function Result({ onNavigate }: ResultProps) {
         return url.toString();
     };
 
-    // --- EFEITO PRINCIPAL DE PROGRESSÃO (SEM SCROLLS AUTOMÁTICOS) ---
+    // --- EFEITO PRINCIPAL DE PROGRESSÃO ---
     useEffect(() => {
         ensureUTMs();
         tracking.pageView('resultado');
         ga4Tracking.resultPageView();
 
-        // Loading acelerado
         const progressInterval = setInterval(() => {
             setLoadingProgress(prev => {
                 if (prev >= 100) {
@@ -115,13 +111,12 @@ export default function Result({ onNavigate }: ResultProps) {
             setTimeout(() => setLoadingStep(index), step.duration);
         });
 
-        // Transição para Fase 1 (Diagnóstico) após loading
         const timerPhase1 = setTimeout(() => {
             setCurrentPhase(1);
             playKeySound();
             tracking.revelationViewed('why_left');
             ga4Tracking.revelationViewed('Por qué te dejó', 1);
-        }, 2500); // Tempo para o loading inicial
+        }, 2500);
 
         const countdownInterval = setInterval(() => setTimeLeft(prev => (prev <= 1 ? 0 : prev - 1)), 1000);
 
@@ -156,29 +151,30 @@ export default function Result({ onNavigate }: ResultProps) {
         };
     }, []);
 
-    // --- EFEITO PARA O DELAY DO BOTÃO "REVELAR VENTANA DE 72 HORAS" ---
+    // --- EFEITO PARA O DELAY DO BOTÃO DO VÍDEO (FASE 2) ---
     useEffect(() => {
-        if (delayActive && delayTimeLeft > 0) {
-            const delayTimer = setInterval(() => {
-                setDelayTimeLeft(prev => {
-                    const newTime = prev - 1;
-                    const progress = (1 - newTime / DELAY_SECONDS) * 100;
-                    if (progress < 25) setCurrentEmoji('😴');
-                    else if (progress < 50) setCurrentEmoji('⏳');
-                    else if (progress < 75) setCurrentEmoji('🔥');
-                    else setCurrentEmoji('🚀');
+        let delayInterval: NodeJS.Timeout;
+        if (currentPhase === 2) {
+            setVideoButtonDelayLeft(50);
+            setIsVideoButtonEnabled(false);
 
-                    if (newTime <= 0) {
-                        clearInterval(delayTimer);
-                        setDelayActive(false); // Desativa o delay
+            delayInterval = setInterval(() => {
+                setVideoButtonDelayLeft(prev => {
+                    if (prev <= 1) {
+                        clearInterval(delayInterval);
+                        setIsVideoButtonEnabled(true);
+                        ga4Tracking.videoButtonUnlocked({ unlock_time_seconds: 50, video_name: 'VSL Plan Personalizado' });
                         return 0;
                     }
-                    return newTime;
+                    return prev - 1;
                 });
             }, 1000);
-            return () => clearInterval(delayTimer);
         }
-    }, [delayActive, delayTimeLeft]);
+
+        return () => {
+            if (delayInterval) clearInterval(delayInterval);
+        };
+    }, [currentPhase]);
 
     // Injeção VTurb
     useEffect(() => {
@@ -208,46 +204,49 @@ export default function Result({ onNavigate }: ResultProps) {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleCTAClick = useCallback(() => {
+    // --- HANDLERS DE CLIQUE DOS BOTÕES ---
+    const handlePhase1ButtonClick = () => {
+        playKeySound();
+        setCurrentPhase(2);
+        ga4Tracking.phaseProgressionClicked({ phase_from: 1, phase_to: 2, button_name: 'Desbloquear El Vídeo Secreto' });
+        tracking.vslEvent('started');
+        ga4Tracking.videoStarted();
+    };
+
+    const handlePhase2ButtonClick = () => {
+        if (!isVideoButtonEnabled) return;
+        playKeySound();
+        setCurrentPhase(3);
+        ga4Tracking.phaseProgressionClicked({ phase_from: 2, phase_to: 3, button_name: 'Revelar VENTANA DE 72 HORAS' });
+        tracking.revelationViewed('72h_window');
+        ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
+    };
+
+    const handlePhase3ButtonClick = () => {
+        playKeySound();
+        setCurrentPhase(4);
+        ga4Tracking.phaseProgressionClicked({ phase_from: 3, phase_to: 4, button_name: 'Revelar Mi Plan Personalizado' });
+        tracking.revelationViewed('offer');
+        ga4Tracking.revelationViewed('Oferta Revelada', 3);
+        ga4Tracking.offerRevealed();
+    };
+
+    const handleCTAClick = () => {
         tracking.ctaClicked('result_buy');
         ga4Tracking.ctaBuyClicked('result_buy_main');
         window.open(appendUTMsToHotmartURL(), '_blank');
-    }, []);
+    };
 
-    const handleButtonClick = useCallback((nextPhase: number, eventName: string, eventParams?: Record<string, any>) => {
-        playKeySound();
-        ga4Tracking.phaseProgressionClicked(currentPhase, nextPhase, eventName, eventParams);
-        setCurrentPhase(nextPhase);
-        if (nextPhase === 3) { // Ativa o delay para o botão da Ventana 72h
-            setDelayActive(true);
-            setDelayTimeLeft(DELAY_SECONDS);
-            ga4Tracking.videoButtonUnlocked('Revelar Ventana 72h', DELAY_SECONDS);
-        } else if (nextPhase === 4) {
-            ga4Tracking.ventana72Revealed();
-        }
-    }, [currentPhase]);
+    // --- HELPER PARA EMOJI DO DELAY ---
+    const getDelayEmoji = (secondsLeft: number) => {
+        const progress = (50 - secondsLeft) / 50;
+        if (progress < 0.2) return '😴';
+        if (progress < 0.4) return '⏳';
+        if (progress < 0.7) return '🔥';
+        return '🚀';
+    };
 
     const phases = ['Diagnóstico', 'Vídeo', 'Ventana 72h', 'Solución'];
-
-    // --- FUNÇÃO PARA RENDERIZAR BOTÕES DE CTA ---
-    const renderActionButton = (
-        buttonText: string,
-        onClick: () => void,
-        colorClass: string,
-        sizeClass: string,
-        animationClass: string,
-        disabled: boolean = false,
-        subText?: string
-    ) => (
-        <button
-            className={`cta-button ${colorClass} ${sizeClass} ${animationClass}`}
-            onClick={onClick}
-            disabled={disabled}
-        >
-            {buttonText}
-            {subText && <span className="cta-subtext">{subText}</span>}
-        </button>
-    );
 
     return (
         <div className="result-container">
@@ -319,21 +318,14 @@ export default function Result({ onNavigate }: ResultProps) {
                         <div className="emotional-validation">
                             <p><strong>Tu situación específica:</strong><br />{getEmotionalValidation(quizData)}</p>
                         </div>
-                    </div>
-                )}
 
-                {/* CTA 1: ABAIXO DO DIAGNÓSTICO */}
-                {currentPhase === 1 && (
-                    <div className="cta-wrapper fade-in">
-                        {renderActionButton(
-                            'Desbloquear El Vídeo Secreto 🔓',
-                            () => handleButtonClick(2, 'video_unlocked_button_clicked'),
-                            'btn-green',
-                            'btn-size-1',
-                            'btn-animation-fadein',
-                            false,
-                            '(Las 3 fases en 72 horas)'
-                        )}
+                        {/* BOTÃO 1: DESBLOQUEAR VÍDEO */}
+                        <button 
+                            className="cta-button btn-green btn-size-1 btn-animation-fadein" 
+                            onClick={handlePhase1ButtonClick}
+                        >
+                            🔓 Desbloquear El Vídeo Secreto
+                        </button>
                     </div>
                 )}
 
@@ -347,44 +339,36 @@ export default function Result({ onNavigate }: ResultProps) {
                         <div className="vsl-container">
                             <div className="vsl-placeholder"></div> 
                         </div>
-                    </div>
-                )}
 
-                {/* CTA 2: ABAIXO DO VÍDEO (COM DELAY E INDICADOR) */}
-                {currentPhase === 2 && (
-                    <div className="cta-wrapper fade-in">
-                        {delayActive ? (
-                            <div className="delay-indicator-box">
-                                <div className="delay-progress-bar-container">
-                                    <div 
-                                        className="delay-progress-bar" 
-                                        style={{ width: `${(1 - delayTimeLeft / DELAY_SECONDS) * 100}%` }}
-                                    ></div>
-                                </div>
-                                <p className="delay-text">
-                                    {currentEmoji} Próxima sección en {delayTimeLeft}s...
-                                </p>
-                                <p className="delay-subtext">
-                                    ✨ Preparando: LA VENTANA DE 72 HORAS ✨
-                                </p>
-                                {renderActionButton(
-                                    'Revelar VENTANA DE 72 HORAS',
-                                    () => handleButtonClick(3, 'ventana72_revealed_button_clicked'),
-                                    'btn-yellow',
-                                    'btn-size-2',
-                                    'btn-animation-bounce',
-                                    true // Desabilitado durante o delay
-                                )}
-                            </div>
-                        ) : (
-                            renderActionButton(
-                                'Revelar VENTANA DE 72 HORAS',
-                                () => handleButtonClick(3, 'ventana72_revealed_button_clicked'),
-                                'btn-yellow',
-                                'btn-size-2',
-                                'btn-animation-bounce'
-                            )
-                        )}
+                        {/* BOTÃO 2: REVELAR VENTANA DE 72 HORAS (COM DELAY E INDICADOR) */}
+                        <div className="video-delay-indicator">
+                            {!isVideoButtonEnabled ? (
+                                <>
+                                    <p className="delay-text">
+                                        {getDelayEmoji(videoButtonDelayLeft)} Próxima sección en {videoButtonDelayLeft} segundos...
+                                    </p>
+                                    <div className="delay-progress-bar-container">
+                                        <div 
+                                            className="delay-progress-bar" 
+                                            style={{ width: `${((50 - videoButtonDelayLeft) / 50) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                    <button 
+                                        className="cta-button btn-yellow btn-size-2 btn-animation-bounce disabled" 
+                                        disabled
+                                    >
+                                        Revelar VENTANA DE 72 HORAS
+                                    </button>
+                                </>
+                            ) : (
+                                <button 
+                                    className="cta-button btn-yellow btn-size-2 btn-animation-bounce" 
+                                    onClick={handlePhase2ButtonClick}
+                                >
+                                    Revelar VENTANA DE 72 HORAS
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -409,21 +393,14 @@ export default function Result({ onNavigate }: ResultProps) {
                             alt="Ventana 72h" 
                             className="ventana-img"
                         />
-                    </div>
-                )}
 
-                {/* CTA 3: ABAIXO DA VENTANA 72H */}
-                {currentPhase === 3 && (
-                    <div className="cta-wrapper fade-in">
-                        {renderActionButton(
-                            'Revelar Mi Plan Personalizado ⚡',
-                            () => handleButtonClick(4, 'offer_plan_revealed_button_clicked'),
-                            'btn-orange',
-                            'btn-size-3',
-                            'btn-animation-pulse',
-                            false,
-                            '(Tu estrategia de reconquista)'
-                        )}
+                        {/* BOTÃO 3: REVELAR MI PLAN PERSONALIZADO */}
+                        <button 
+                            className="cta-button btn-orange btn-size-3 btn-animation-pulse" 
+                            onClick={handlePhase3ButtonClick}
+                        >
+                            ⚡ Revelar Mi Plan Personalizado
+                        </button>
                     </div>
                 )}
 
@@ -503,16 +480,10 @@ export default function Result({ onNavigate }: ResultProps) {
                             <p className="price-discount">💰 85% de descuento HOY</p>
                         </div>
 
-                        {/* CTA 4: BOTÃO FINAL DE COMPRA */}
-                        {renderActionButton(
-                            '🚀 SÍ, QUIERO MI RECONQUISTA GARANTIZADA 🚀',
-                            handleCTAClick,
-                            'btn-green',
-                            'btn-size-4',
-                            'btn-animation-glowshake',
-                            false,
-                            '(30 días o tu dinero de vuelta)'
-                        )}
+                        {/* BOTÃO 4: CTA FINAL */}
+                        <button className="cta-button btn-green btn-size-4 btn-animation-glowshake" onClick={handleCTAClick}>
+                            🚀 {getCTA(gender)} 🚀
+                        </button>
 
                         {/* PROVA SOCIAL REAL */}
                         <div className="real-proof-box">
@@ -602,56 +573,45 @@ export default function Result({ onNavigate }: ResultProps) {
                 .price-new { font-size: 3rem; color: #facc15; font-weight: 900; margin: 5px 0; }
                 .price-discount { color: #4ade80; font-weight: bold; }
                 
-                /* CTA BUTTONS */
-                .cta-wrapper { margin: 30px auto; max-width: 600px; text-align: center; }
+                /* CTA BUTTONS STYLES */
                 .cta-button { 
                     width: 100%; 
+                    color: black; 
                     font-weight: 900; 
                     padding: 20px; 
                     border-radius: 12px; 
                     border: 3px solid white; 
                     cursor: pointer; 
+                    margin-top: 20px;
                     transition: all 0.3s ease;
                     display: flex;
-                    flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    line-height: 1.2;
+                    gap: 10px;
                 }
                 .cta-button:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
-                    border-color: rgba(255,255,255,0.3);
-                }
-                .cta-subtext {
-                    font-size: 0.8em;
-                    font-weight: 500;
-                    opacity: 0.8;
-                    margin-top: 5px;
+                    filter: grayscale(50%);
                 }
 
                 /* Button Colors */
-                .btn-green { background: #10b981; color: black; }
-                .btn-green:hover:not(:disabled) { background: #059669; }
-                .btn-yellow { background: #eab308; color: black; }
-                .btn-yellow:hover:not(:disabled) { background: #ca8a04; }
-                .btn-orange { background: #f97316; color: black; }
-                .btn-orange:hover:not(:disabled) { background: #ea580c; }
-                .btn-red { background: #ef4444; color: black; } /* Not used in final plan, but kept for reference */
-                .btn-red:hover:not(:disabled) { background: #dc2626; }
+                .btn-green { background: #10b981; }
+                .btn-yellow { background: #eab308; }
+                .btn-orange { background: #f97316; }
 
                 /* Button Sizes */
-                .btn-size-1 { font-size: 16px; }
-                .btn-size-2 { font-size: 18px; }
-                .btn-size-3 { font-size: 20px; }
-                .btn-size-4 { font-size: 24px; }
+                .btn-size-1 { font-size: 1rem; }
+                .btn-size-2 { font-size: 1.125rem; }
+                .btn-size-3 { font-size: 1.25rem; }
+                .btn-size-4 { font-size: 1.5rem; }
 
                 /* Button Animations */
                 .btn-animation-fadein { animation: fadeIn 0.6s ease-in-out; }
-                .btn-animation-bounce { animation: bounce 0.8s infinite alternate; }
+                .btn-animation-bounce { animation: bounce 1s infinite; }
                 @keyframes bounce {
-                    0% { transform: translateY(0); }
-                    100% { transform: translateY(-5px); }
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-5px); }
                 }
                 .btn-animation-pulse { animation: pulse 1.5s infinite; }
                 @keyframes pulse {
@@ -659,8 +619,8 @@ export default function Result({ onNavigate }: ResultProps) {
                     70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(249, 115, 22, 0); }
                     100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
                 }
-                .btn-animation-glowshake { animation: glowShake 1.5s infinite; }
-                @keyframes glowShake {
+                .btn-animation-glowshake { animation: glowshake 2s infinite; }
+                @keyframes glowshake {
                     0%, 100% { transform: translateX(0) scale(1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); }
                     25% { transform: translateX(-2px) scale(1.01); box-shadow: 0 0 20px rgba(16, 185, 129, 1); }
                     50% { transform: translateX(2px) scale(1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); }
@@ -696,43 +656,6 @@ export default function Result({ onNavigate }: ResultProps) {
                 .ventana-img { width: 100%; max-width: 600px; border-radius: 12px; margin: 20px auto; display: block; }
                 .emotional-validation { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 20px; margin-top: 20px; color: #4ade80; }
 
-                /* Delay Indicator Styles */
-                .delay-indicator-box {
-                    background: rgba(234, 179, 8, 0.1);
-                    border: 2px solid #eab308;
-                    border-radius: 12px;
-                    padding: 20px;
-                    text-align: center;
-                    margin-top: 20px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 15px;
-                    align-items: center;
-                }
-                .delay-progress-bar-container {
-                    width: 80%;
-                    height: 10px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border-radius: 5px;
-                    overflow: hidden;
-                }
-                .delay-progress-bar {
-                    height: 100%;
-                    background: #eab308;
-                    transition: width 1s linear;
-                }
-                .delay-text {
-                    font-size: 1.2rem;
-                    font-weight: bold;
-                    color: white;
-                    margin: 0;
-                }
-                .delay-subtext {
-                    font-size: 0.9rem;
-                    color: rgba(255, 255, 255, 0.8);
-                    margin: 0;
-                }
-
                 @keyframes spin {
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
@@ -752,6 +675,43 @@ export default function Result({ onNavigate }: ResultProps) {
                 @keyframes fadeInUp {
                     from { opacity: 0; transform: translateY(100%); }
                     to { opacity: 1; transform: translateY(0); }
+                }
+
+                /* STYLES PARA O DELAY DO BOTÃO DO VÍDEO */
+                .video-delay-indicator {
+                    background: rgba(0,0,0,0.4);
+                    border: 2px solid #eab308;
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin-top: 20px;
+                    text-align: center;
+                    color: white;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 15px;
+                }
+                .delay-text {
+                    font-size: 1.1rem;
+                    font-weight: bold;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 10px;
+                }
+                .delay-progress-bar-container {
+                    width: 100%;
+                    height: 10px;
+                    background: rgba(255,255,255,0.2);
+                    border-radius: 5px;
+                    overflow: hidden;
+                }
+                .delay-progress-bar {
+                    height: 100%;
+                    background: #eab308;
+                    width: 0%;
+                    transition: width 1s linear;
+                    border-radius: 5px;
                 }
             `}</style>
         </div>
