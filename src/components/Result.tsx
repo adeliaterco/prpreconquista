@@ -24,10 +24,18 @@ interface ResultProps {
 export default function Result({ onNavigate }: ResultProps) {
     // --- ESTADO UNIFICADO E CONTROLE DE FLUXO ---
     const [currentPhase, setCurrentPhase] = useState(0);
+    const [fadeOutPhase, setFadeOutPhase] = useState<number | null>(null);
 
     // --- ESTADOS PARA O DELAY DO BOTÃO DO VÍDEO ---
     const [videoButtonDelayLeft, setVideoButtonDelayLeft] = useState(50);
     const [isVideoButtonEnabled, setIsVideoButtonEnabled] = useState(false);
+
+    // --- ESTADO PARA OS CHECKMARKS DOS BOTÕES ---
+    const [buttonCheckmarks, setButtonCheckmarks] = useState<{[key: number]: boolean}>({
+        0: false,
+        1: false,
+        2: false
+    });
 
     // --- PERSISTÊNCIA DO TIMER NO LOCALSTORAGE ---
     const getInitialTime = () => {
@@ -204,31 +212,52 @@ export default function Result({ onNavigate }: ResultProps) {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // --- HANDLERS DE CLIQUE DOS BOTÕES ---
+    // --- HANDLERS DE CLIQUE DOS BOTÕES COM TRANSIÇÃO ---
     const handlePhase1ButtonClick = () => {
         playKeySound();
-        setCurrentPhase(2);
-        ga4Tracking.phaseProgressionClicked({ phase_from: 1, phase_to: 2, button_name: 'Desbloquear El Vídeo Secreto' });
-        tracking.vslEvent('started');
-        ga4Tracking.videoStarted();
+        setButtonCheckmarks(prev => ({ ...prev, 0: true }));
+        setFadeOutPhase(1);
+
+        setTimeout(() => {
+            setCurrentPhase(2);
+            ga4Tracking.phaseProgressionClicked({ phase_from: 1, phase_to: 2, button_name: 'Desbloquear El Vídeo Secreto' });
+            tracking.vslEvent('started');
+            ga4Tracking.videoStarted();
+            setFadeOutPhase(null);
+            setButtonCheckmarks(prev => ({ ...prev, 0: false }));
+        }, 1300);
     };
 
     const handlePhase2ButtonClick = () => {
         if (!isVideoButtonEnabled) return;
         playKeySound();
-        setCurrentPhase(3);
-        ga4Tracking.phaseProgressionClicked({ phase_from: 2, phase_to: 3, button_name: 'Revelar VENTANA DE 72 HORAS' });
-        tracking.revelationViewed('72h_window');
-        ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
+        setButtonCheckmarks(prev => ({ ...prev, 1: true }));
+        setFadeOutPhase(2);
+
+        setTimeout(() => {
+            setCurrentPhase(3);
+            ga4Tracking.phaseProgressionClicked({ phase_from: 2, phase_to: 3, button_name: 'Revelar VENTANA DE 72 HORAS' });
+            tracking.revelationViewed('72h_window');
+            ga4Tracking.revelationViewed('Ventana 72 Horas', 2);
+            setFadeOutPhase(null);
+            setButtonCheckmarks(prev => ({ ...prev, 1: false }));
+        }, 1300);
     };
 
     const handlePhase3ButtonClick = () => {
         playKeySound();
-        setCurrentPhase(4);
-        ga4Tracking.phaseProgressionClicked({ phase_from: 3, phase_to: 4, button_name: 'Revelar Mi Plan Personalizado' });
-        tracking.revelationViewed('offer');
-        ga4Tracking.revelationViewed('Oferta Revelada', 3);
-        ga4Tracking.offerRevealed();
+        setButtonCheckmarks(prev => ({ ...prev, 2: true }));
+        setFadeOutPhase(3);
+
+        setTimeout(() => {
+            setCurrentPhase(4);
+            ga4Tracking.phaseProgressionClicked({ phase_from: 3, phase_to: 4, button_name: 'Revelar Mi Plan Personalizado' });
+            tracking.revelationViewed('offer');
+            ga4Tracking.revelationViewed('Oferta Revelada', 3);
+            ga4Tracking.offerRevealed();
+            setFadeOutPhase(null);
+            setButtonCheckmarks(prev => ({ ...prev, 2: false }));
+        }, 1300);
     };
 
     const handleCTAClick = () => {
@@ -261,7 +290,7 @@ export default function Result({ onNavigate }: ResultProps) {
                 </p>
             </div>
 
-            {/* BARRA DE PROGRESSO UNIFICADA */}
+            {/* BARRA DE PROGRESO UNIFICADA */}
             {currentPhase > 0 && (
                 <div className="progress-bar-container fade-in">
                     {phases.map((label, index) => (
@@ -297,7 +326,10 @@ export default function Result({ onNavigate }: ResultProps) {
 
                 {/* FASE 1: DIAGNÓSTICO */}
                 {currentPhase >= 1 && (
-                    <div ref={diagnosticoSectionRef} className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''}`}>
+                    <div 
+                        ref={diagnosticoSectionRef} 
+                        className={`revelation fade-in ${currentPhase === 1 ? 'diagnostic-pulse' : ''} ${fadeOutPhase === 1 ? 'fade-out' : ''}`}
+                    >
                         <div className="revelation-header">
                             <div className="revelation-icon">💔</div>
                             <h2>{getTitle(gender)}</h2>
@@ -320,18 +352,27 @@ export default function Result({ onNavigate }: ResultProps) {
                         </div>
 
                         {/* BOTÃO 1: DESBLOQUEAR VÍDEO */}
-                        <button 
-                            className="cta-button btn-green btn-size-1 btn-animation-fadein" 
-                            onClick={handlePhase1ButtonClick}
-                        >
-                            🔓 Desbloquear El Vídeo Secreto
-                        </button>
+                        {buttonCheckmarks[0] ? (
+                            <div className="checkmark-container">
+                                <div className="checkmark-glow">✅</div>
+                            </div>
+                        ) : (
+                            <button 
+                                className="cta-button btn-green btn-size-1 btn-animation-fadein" 
+                                onClick={handlePhase1ButtonClick}
+                            >
+                                🔓 Desbloquear El Vídeo Secreto
+                            </button>
+                        )}
                     </div>
                 )}
 
                 {/* FASE 2: VÍDEO */}
                 {currentPhase >= 2 && (
-                    <div ref={videoSectionRef} className="revelation fade-in vsl-revelation">
+                    <div 
+                        ref={videoSectionRef} 
+                        className={`revelation fade-in vsl-revelation ${fadeOutPhase === 2 ? 'fade-out' : ''}`}
+                    >
                         <div className="revelation-header">
                             <div className="revelation-icon">🎥</div>
                             <h2>Cómo Reactivar Los Interruptores Emocionales En 72 Horas</h2>
@@ -341,40 +382,49 @@ export default function Result({ onNavigate }: ResultProps) {
                         </div>
 
                         {/* BOTÃO 2: REVELAR VENTANA DE 72 HORAS (COM DELAY E INDICADOR) */}
-                        <div className="video-delay-indicator">
-                            {!isVideoButtonEnabled ? (
-                                <>
-                                    <p className="delay-text">
-                                        {getDelayEmoji(videoButtonDelayLeft)} Próxima sección en {videoButtonDelayLeft} segundos...
-                                    </p>
-                                    <div className="delay-progress-bar-container">
-                                        <div 
-                                            className="delay-progress-bar" 
-                                            style={{ width: `${((50 - videoButtonDelayLeft) / 50) * 100}%` }}
-                                        ></div>
-                                    </div>
+                        {buttonCheckmarks[1] ? (
+                            <div className="checkmark-container">
+                                <div className="checkmark-glow">✅</div>
+                            </div>
+                        ) : (
+                            <div className="video-delay-indicator">
+                                {!isVideoButtonEnabled ? (
+                                    <>
+                                        <p className="delay-text">
+                                            {getDelayEmoji(videoButtonDelayLeft)} Próxima sección en {videoButtonDelayLeft} segundos...
+                                        </p>
+                                        <div className="delay-progress-bar-container">
+                                            <div 
+                                                className="delay-progress-bar" 
+                                                style={{ width: `${((50 - videoButtonDelayLeft) / 50) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                        <button 
+                                            className="cta-button btn-yellow btn-size-2 btn-animation-bounce disabled" 
+                                            disabled
+                                        >
+                                            Revelar VENTANA DE 72 HORAS
+                                        </button>
+                                    </>
+                                ) : (
                                     <button 
-                                        className="cta-button btn-yellow btn-size-2 btn-animation-bounce disabled" 
-                                        disabled
+                                        className="cta-button btn-yellow btn-size-2 btn-animation-bounce" 
+                                        onClick={handlePhase2ButtonClick}
                                     >
                                         Revelar VENTANA DE 72 HORAS
                                     </button>
-                                </>
-                            ) : (
-                                <button 
-                                    className="cta-button btn-yellow btn-size-2 btn-animation-bounce" 
-                                    onClick={handlePhase2ButtonClick}
-                                >
-                                    Revelar VENTANA DE 72 HORAS
-                                </button>
-                            )}
-                        </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* FASE 3: VENTANA 72H */}
                 {currentPhase >= 3 && (
-                    <div ref={ventana72SectionRef} className="revelation fade-in ventana-box-custom">
+                    <div 
+                        ref={ventana72SectionRef} 
+                        className={`revelation fade-in ventana-box-custom ${fadeOutPhase === 3 ? 'fade-out' : ''}`}
+                    >
                         <div className="ventana-header-custom">
                             <span>⚡</span>
                             <h2>LA VENTANA DE 72 HORAS</h2>
@@ -395,12 +445,18 @@ export default function Result({ onNavigate }: ResultProps) {
                         />
 
                         {/* BOTÃO 3: REVELAR MI PLAN PERSONALIZADO */}
-                        <button 
-                            className="cta-button btn-orange btn-size-3 btn-animation-pulse" 
-                            onClick={handlePhase3ButtonClick}
-                        >
-                            ⚡ Revelar Mi Plan Personalizado
-                        </button>
+                        {buttonCheckmarks[2] ? (
+                            <div className="checkmark-container">
+                                <div className="checkmark-glow">✅</div>
+                            </div>
+                        ) : (
+                            <button 
+                                className="cta-button btn-orange btn-size-3 btn-animation-pulse" 
+                                onClick={handlePhase3ButtonClick}
+                            >
+                                ⚡ Revelar Mi Plan Personalizado
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -588,17 +644,25 @@ export default function Result({ onNavigate }: ResultProps) {
                     align-items: center;
                     justify-content: center;
                     gap: 10px;
+                    font-size: clamp(1rem, 4vw, 1.5rem);
                 }
                 .cta-button:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
                     filter: grayscale(50%);
                 }
+                .cta-button:hover:not(:disabled) {
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                }
 
                 /* Button Colors */
                 .btn-green { background: #10b981; }
+                .btn-green:hover:not(:disabled) { background: #059669; }
                 .btn-yellow { background: #eab308; }
+                .btn-yellow:hover:not(:disabled) { background: #ca8a04; }
                 .btn-orange { background: #f97316; }
+                .btn-orange:hover:not(:disabled) { background: #ea580c; }
 
                 /* Button Sizes */
                 .btn-size-1 { font-size: 1rem; }
@@ -627,8 +691,47 @@ export default function Result({ onNavigate }: ResultProps) {
                     75% { transform: translateX(-2px) scale(1.01); box-shadow: 0 0 20px rgba(16, 185, 129, 1); }
                 }
 
+                /* CHECKMARK STYLES */
+                .checkmark-container {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    margin-top: 20px;
+                    min-height: 80px;
+                }
+                .checkmark-glow {
+                    font-size: 4rem;
+                    animation: checkmarkShine 1s ease-in-out;
+                }
+                @keyframes checkmarkShine {
+                    0% { 
+                        opacity: 0;
+                        transform: scale(0.5);
+                        filter: brightness(1);
+                    }
+                    50% { 
+                        opacity: 1;
+                        transform: scale(1.1);
+                        filter: brightness(1.8);
+                    }
+                    100% { 
+                        opacity: 1;
+                        transform: scale(1);
+                        filter: brightness(1);
+                    }
+                }
+
+                /* FADE OUT ANIMATION */
+                .fade-out {
+                    animation: fadeOutAnimation 0.3s ease-out forwards;
+                }
+                @keyframes fadeOutAnimation {
+                    from { opacity: 1; transform: translateY(0); }
+                    to { opacity: 0; transform: translateY(-20px); }
+                }
+
                 .real-proof-box { background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px; padding: 15px; text-align: center; color: #4ade80; margin: 20px 0; }
-                .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; }
+                .trust-icons { display: flex; justify-content: center; gap: 15px; color: #4ade80; font-size: 0.85rem; margin-bottom: 20px; flex-wrap: wrap; }
                 
                 /* GRID DE URGÊNCIA OTIMIZADO */
                 .final-urgency-grid-optimized { 
